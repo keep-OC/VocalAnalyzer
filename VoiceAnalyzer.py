@@ -9,10 +9,16 @@ import threading, collections, time, sys
 # --- ユーザ設定 ---------------------------------------------------------------
 OSC_IP   = "127.0.0.1"
 OSC_PORT = 9000
-BUFFER_SECONDS = 0.2        # リングバッファ長 (秒) 44100*0.1 ≒ 4410 samples
-FPS = 90                    # ←★ 解析・送信レート ( >= 60 )
+BUFFER_SECONDS = 0.2        # リングバッファ長 (秒)
+FPS = 90                    # 解析・送信レート (>=60)
 HARMONICS = 10
-DEBUG = True                # ←★ True ならコンソールへ毎フレーム出力
+DEBUG = True
+# -----------------------------------------------------------------------------
+
+# --- 送信先パラメータ名 ------------------------------------------------------- ### CHANGED
+PARAM_F0_L  = "/avatar/parameters/F0_L"
+PARAM_F0_H  = "/avatar/parameters/F0_H"
+PARAM_GAIN  = [f"/avatar/parameters/G{i}" for i in range(1, HARMONICS + 1)]
 # -----------------------------------------------------------------------------
 
 
@@ -39,9 +45,9 @@ class RingBuffer:
             self.buf.extend(data)
 
     def get(self):
+      # コピーを極力抑えつつ NumPy 配列化（NumPy 2.0 対応） ### CHANGED
         with self.lock:
-            # copy=False で余計なメモリ確保を避ける
-            return np.fromiter(self.buf, dtype=np.float32, count=len(self.buf))
+            return np.asarray(self.buf, dtype=np.float32)
 
 
 class VoiceAnalyzer(threading.Thread):
@@ -56,35 +62,40 @@ class VoiceAnalyzer(threading.Thread):
 
         while self.running.is_set():
             now = time.perf_counter()
-            if now < next_ts:                # スリープで目標 FPS に合わせる
+            if now < next_ts:
                 time.sleep(next_ts - now)
                 continue
             next_ts += hop
 
             samples = self.ring.get()
-            if samples.size < 512:           # バッファがまだ小さいならスキップ
+            if samples.size < 1024:          # 十分たまるまで待つ
                 continue
 
             # --- FFT & 基音 --------------------------------------------------
-            spec = np.abs(np.fft.rfft(samples))
+            spec  = np.abs(np.fft.rfft(samples))
             freqs = np.fft.rfftfreq(samples.size, 1 / self.sr)
 
-            f0 = self.f0_func(samples, self.sr)
-            self.osc.send_message("/avatar/parameters/f0", float(f0))
+            f0 = float(self.f0_func(samples, self.sr))  # [Hz]
+            f0_q = max(0, min(65535, int(round(f0))))   # 16-bit 量子化 ### CHANGED
 
-            # --- 倍音処理 ----------------------------------------------------
+            # 基音を下位/上位 8bit に分割して送信 ### CHANGED
+            self.osc.send_message(PARAM_F0_L, f0_q & 0xFF)
+            self.osc.send_message(PARAM_F0_H, (f0_q >> 8) & 0xFF)
+
+            # --- 倍音ゲイン --------------------------------------------------
             debug_parts = [f"f0={f0:7.2f}Hz"] if DEBUG else None
             if f0 > 0:
+                spec_max = np.max(spec) or 1.0
                 for i in range(1, HARMONICS + 1):
                     target = f0 * i
-                    idx = int(np.argmin(np.abs(freqs - target)))
-                    amp = float(spec[idx] / np.max(spec))
-                    self.osc.send_message(f"/avatar/parameters/h{i}_freq", float(freqs[idx]))
-                    self.osc.send_message(f"/avatar/parameters/h{i}_gain", amp)
+                    idx    = int(np.argmin(np.abs(freqs - target)))
+                    amp    = spec[idx] / spec_max          # 0-1
+                    gain_q = max(0, min(255, int(round(amp * 255))))  # Int 0-255 ### CHANGED
+                    self.osc.send_message(PARAM_GAIN[i-1], gain_q)    # Int 送信 ### CHANGED
                     if DEBUG:
-                        debug_parts.append(f"h{i}:{freqs[idx]:7.1f}Hz/{amp:4.2f}")
+                        debug_parts.append(f"h{i}:{gain_q:3d}")
 
-            # --- Console 出力 ------------------------------------------------
+            # --- Console 出力 ----------------------------------------------
             if DEBUG:
                 print(" | ".join(debug_parts), file=sys.stderr, flush=True)
 
@@ -135,14 +146,12 @@ class App(tk.Tk):
         osc = SimpleUDPClient(OSC_IP, OSC_PORT)
         self.analyzer = VoiceAnalyzer(self.ring, sr, osc, default_f0_estimator)
         self.analyzer.start()
-        # messagebox.showinfo("Started", f"解析 {FPS} Hz / 送信先 {OSC_IP}:{OSC_PORT}")
 
     def stop(self):
         if self.stream:
             self.stream.stop(); self.stream.close(); self.stream = None
         if self.analyzer:
             self.analyzer.stop(); self.analyzer = None
-        # messagebox.showinfo("Stopped", "Voice analyzer stopped.")
 
     def on_close(self):
         self.stop()
