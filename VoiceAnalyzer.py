@@ -119,10 +119,22 @@ class RingBuffer:
 #                     debug_timer = now
 
 class VoiceAnalyzer(threading.Thread):
-    def __init__(self, ring, sr, osc_client, f0_func):
+    def __init__(self, ring, sr, osc_client, f0_func, amp_ref=0.05):
         super().__init__(daemon=True)
-        self.ring, self.sr, self.osc, self.f0_func = ring, sr, osc_client, f0_func
-        self.running = threading.Event(); self.running.set()
+        self.ring = ring
+        self.sr = sr
+        self.osc = osc_client
+        self.f0_func = f0_func
+        self.amp_ref = amp_ref  # 最大値基準
+        self.max_ratio = 0.0  # ゲインの最大比（インジケーター用）
+        self.running = threading.Event()
+        self.running.set()
+
+    def set_amp_ref(self, new_ref):
+        self.amp_ref = max(0.001, float(new_ref))  # 0.0 を防止
+
+    def get_max_ratio(self):
+        return min(1.0, self.max_ratio)
 
     def run(self):
         # send_count = 0
@@ -192,6 +204,7 @@ class VoiceAnalyzer(threading.Thread):
 
             #         self.osc.send_message(PARAM_GAIN[i-1], float(amp))
 
+            self.max_ratio = 0.0
             if f0 > 0:
                 amp_scale = samples.size
                 for i in range(1, HARMONICS + 1):
@@ -199,7 +212,8 @@ class VoiceAnalyzer(threading.Thread):
                     idx = np.argmin(np.abs(freqs - target))
                     peak_freq = freqs[idx]
                     amp = spec[idx] / amp_scale
-                    amp = amp / 0.05  # スケーリング
+                    amp = min(1.0, amp / self.amp_ref)  # ← 上限を外部から指定し、1.0 を超えないようにする
+                    self.max_ratio = max(self.max_ratio, amp)  # 滑らかに更新
 
                    # Harmonic デバッグ表示
                     if self.running.is_set() and DEBUG and i == 1:
@@ -238,6 +252,28 @@ class App(tk.Tk):
         ttk.Button(self, text="Start", command=self.start).grid(row=1, column=0, padx=10, pady=10)
         ttk.Button(self, text="Stop",  command=self.stop).grid(row=1, column=1, padx=10, pady=10)
 
+        # スライダー
+        self.slider = tk.Scale(self, from_=0.001, to=0.2, resolution=0.001,
+                            orient="horizontal", label="Gain Sensitivity (amp_ref)",
+                            command=self.on_slider_change)
+        self.slider.set(0.05)
+        self.slider.grid(row=2, column=0, padx=10, pady=10)
+
+        # 数値入力欄
+        self.amp_entry_var = tk.StringVar(value="0.05")
+        self.amp_entry = ttk.Entry(self, textvariable=self.amp_entry_var, width=6)
+        self.amp_entry.grid(row=2, column=1, padx=10)
+        self.amp_entry.bind("<Return>", self.on_entry_change)
+        self.amp_entry.bind("<FocusOut>", self.on_entry_change)  # フォーカスが外れたときにも反映
+
+        # インジケーター用 Canvas
+        self.canvas = tk.Canvas(self, width=100, height=150, bg="black")
+        self.canvas.grid(row=3, column=0, columnspan=2, padx=10, pady=10)
+        self.indicator = self.canvas.create_rectangle(40, 150, 60, 150, fill="yellow")
+
+        # インジケーター更新タイマー
+        self.after(100, self.update_indicator)
+
         # --- 内部状態 -------------------------------------------------------
         self.stream = None
         self.analyzer = None
@@ -263,7 +299,7 @@ class App(tk.Tk):
 
         # Analyzer thread
         osc = SimpleUDPClient(OSC_IP, OSC_PORT)
-        self.analyzer = VoiceAnalyzer(self.ring, sr, osc, default_f0_estimator)
+        self.analyzer = VoiceAnalyzer(self.ring, sr, osc, default_f0_estimator, amp_ref=0.05)
         self.analyzer.start()
 
     def stop(self):
@@ -281,6 +317,35 @@ class App(tk.Tk):
     def on_close(self):
         self.stop()
         self.destroy()
+
+    def on_slider_change(self, val):
+        try:
+            f = float(val)
+            if self.analyzer:
+                self.analyzer.set_amp_ref(f)
+            self.amp_entry_var.set(f"{f:.3f}")
+        except ValueError:
+            pass
+
+    def on_entry_change(self, event):
+        try:
+            val = float(self.amp_entry_var.get())
+            if val <= 0.0:
+                raise ValueError
+            val = round(val, 5)
+            if self.analyzer:
+                self.analyzer.set_amp_ref(val)
+            self.slider.set(val)
+        except ValueError:
+            # 不正な入力（0 や文字列）は前の有効な値に戻す
+            self.amp_entry_var.set(f"{self.slider.get():.3f}")
+
+    def update_indicator(self):
+        if self.analyzer:
+            ratio = self.analyzer.get_max_ratio()
+            top = int(150 - 150 * ratio)
+            self.canvas.coords(self.indicator, 40, top, 60, 150)
+        self.after(100, self.update_indicator)
 
 
 if __name__ == "__main__":
