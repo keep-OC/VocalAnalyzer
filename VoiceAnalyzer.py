@@ -24,15 +24,6 @@ PARAM_GAIN  = [f"/avatar/parameters/G{i}" for i in range(1, HARMONICS + 1)]
 
 
 def default_f0_estimator(wave, sr):
-    # """ごく簡易なオートコリレーション基音推定（差し替え前提）"""
-    # wave = wave - np.mean(wave)
-    # corr = np.correlate(wave, wave, mode="full")[len(wave)-1:]
-    # d = np.diff(corr)
-    # idx = np.flatnonzero(d > 0)
-    # if idx.size == 0:
-    #     return 0.0
-    # peak = np.argmax(corr[idx[0]:]) + idx[0]
-    # return 0.0 if peak == 0 else sr / peak
     try:
         f0_series = librosa.yin(
             wave,
@@ -63,61 +54,6 @@ class RingBuffer:
             return np.asarray(self.buf, dtype=np.float32)
 
 
-# class VoiceAnalyzer(threading.Thread):
-#     def __init__(self, ring, sr, osc_client, f0_func):
-#         super().__init__(daemon=True)
-#         self.ring, self.sr, self.osc, self.f0_func = ring, sr, osc_client, f0_func
-#         self.running = threading.Event(); self.running.set()
-
-#     def run(self):
-#         hop = 1.0 / FPS
-#         next_ts = time.perf_counter()
-
-#         # デバッグ用：送信カウント
-#         send_count = 0
-#         debug_timer = time.perf_counter()
-
-#         while self.running.is_set():
-#             now = time.perf_counter()
-#             if now < next_ts:
-#                 time.sleep(next_ts - now)
-#                 continue
-#             next_ts += hop
-
-#             samples = self.ring.get()
-#             if samples.size < 1024:
-#                 continue
-
-#             # --- FFT & 基音 --------------------------------------------------
-#             spec  = np.abs(np.fft.rfft(samples))
-#             freqs = np.fft.rfftfreq(samples.size, 1 / self.sr)
-
-#             f0 = float(self.f0_func(samples, self.sr))  # [Hz]
-#             f0_q = max(0, min(65535, int(round(f0))))   # 16-bit 量子化
-
-#             ft_l = 1 / (f0_q & 0x7F) if (f0_q & 0x7F) > 0 else 0
-#             ft_h = 1 / ((f0_q >> 7) & 0x7F) if ((f0_q >> 7) & 0x7F) > 0 else 0
-
-#             self.osc.send_message(PARAM_FT_L, ft_l)
-#             self.osc.send_message(PARAM_FT_H, ft_h)
-
-#             if f0 > 0:
-#                 amp_scale = samples.size
-#                 for i in range(1, HARMONICS + 1):
-#                     target = f0 * i
-#                     idx    = int(np.argmin(np.abs(freqs - target)))
-#                     amp    = spec[idx] / amp_scale
-#                     amp = amp / 0.05
-#                     self.osc.send_message(PARAM_GAIN[i-1], float(amp))
-
-#             # --- 送信回数カウント & 出力 -------------------------------------
-#             send_count += 1
-#             if DEBUG:
-#                 if now - debug_timer >= 1.0:
-#                     print(f"[DEBUG] {send_count} sends/sec", file=sys.stderr, flush=True)
-#                     send_count = 0
-#                     debug_timer = now
-
 class VoiceAnalyzer(threading.Thread):
     def __init__(self, ring, sr, osc_client, f0_func, amp_ref=0.05):
         super().__init__(daemon=True)
@@ -137,15 +73,6 @@ class VoiceAnalyzer(threading.Thread):
         return min(1.0, self.max_ratio)
 
     def run(self):
-        # send_count = 0
-        # debug_timer = time.perf_counter()
-
-        # while self.running.is_set():
-        #     samples = self.ring.get()
-        #     if samples.size < 1024:
-        #         time.sleep(0.001)  # バッファが足りない時は軽く待つ
-        #         continue
-        
         send_count = 0
         debug_timer = time.perf_counter()
 
@@ -173,36 +100,6 @@ class VoiceAnalyzer(threading.Thread):
             ft_h = 1 / ((f0_q >> 7) & 0x7F) if ((f0_q >> 7) & 0x7F) > 0 else -1.0
             self.osc.send_message(PARAM_FT_L, ft_l)
             self.osc.send_message(PARAM_FT_H, ft_h)
-
-            # if f0 > 0:
-            #     amp_scale = samples.size
-            #     for i in range(1, HARMONICS + 1):
-            #         target = f0 * i
-            #         idx = int(np.argmin(np.abs(freqs - target)))
-            #         amp = spec[idx] / amp_scale
-            #         amp = amp / 0.05
-            #         self.osc.send_message(PARAM_GAIN[i-1], float(amp))
-
-            # if f0 > 0:
-            #     amp_scale = samples.size
-            #     freq_tolerance = 5.0  # Hz
-            #     for i in range(1, HARMONICS + 1):
-            #         target = f0 * i
-            #         # 範囲内のビンを取得
-            #         mask = (freqs >= target - freq_tolerance) & (freqs <= target + freq_tolerance)
-            #         if not np.any(mask):
-            #             amp = 0.0
-            #             peak_freq = 0.0
-            #         else:
-            #             peak_idx = np.argmax(spec[mask])
-            #             peak_freq = freqs[mask][peak_idx]
-            #             amp = spec[mask][peak_idx] / amp_scale
-            #         amp = amp / 0.05  # スケーリング（任意）
-
-            #         if DEBUG and i == 1:
-            #             print(f"[DEBUG] Harmonic {i}: Peak @ {peak_freq:.1f} Hz, Amp = {amp:.3f}", file=sys.stderr)
-
-            #         self.osc.send_message(PARAM_GAIN[i-1], float(amp))
 
             self.max_ratio = 0.0
             if f0 > 0:
