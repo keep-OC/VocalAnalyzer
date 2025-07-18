@@ -6,7 +6,7 @@ AnimationClip:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_Name: S_G2
+  m_Name: S_G17
   serializedVersion: 7
   m_Legacy: 0
   m_Compressed: 0
@@ -42,7 +42,7 @@ AnimationClip:
       m_PreInfinity: 2
       m_PostInfinity: 2
       m_RotationOrder: 4
-    attribute: material._G2
+    attribute: material._G17
     path: Updater/SpectrogramUpdater
     classID: 23
     script: {fileID: 0}
@@ -57,7 +57,7 @@ AnimationClip:
     genericBindings:
     - serializedVersion: 2
       path: 3655473917
-      attribute: 2404268253
+      attribute: 2300573968
       script: {fileID: 0}
       typeID: 23
       customType: 22
@@ -111,7 +111,7 @@ AnimationClip:
       m_PreInfinity: 2
       m_PostInfinity: 2
       m_RotationOrder: 4
-    attribute: material._G2
+    attribute: material._G17
     path: Updater/SpectrogramUpdater
     classID: 23
     script: {fileID: 0}
