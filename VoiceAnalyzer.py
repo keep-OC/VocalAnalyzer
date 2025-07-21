@@ -5,6 +5,8 @@ import sounddevice as sd
 from pythonosc.udp_client import SimpleUDPClient
 import threading, collections, time, sys
 import librosa
+import parselmouth
+import math 
 
 ###############################################################################
 # --- ユーザ設定 ---------------------------------------------------------------
@@ -20,8 +22,23 @@ DEBUG = False
 PARAM_FT_L  = "/avatar/parameters/FT_L"
 PARAM_FT_H  = "/avatar/parameters/FT_H"
 PARAM_GAIN  = [f"/avatar/parameters/G{i}" for i in range(1, HARMONICS + 1)]
+PARAM_FORMANT = {
+    i: (f"/avatar/parameters/F{i}_L", f"/avatar/parameters/F{i}_H") for i in range(1, 5)
+}
 # -----------------------------------------------------------------------------
 
+def estimate_formants_parselmouth(wave, sr, n_formants=4):
+    try:
+        snd = parselmouth.Sound(wave, sr)
+        duration = snd.duration
+        formant = snd.to_formant_burg(time_step=0.01)  # Burgアルゴリズム
+        formants = []
+        for i in range(1, n_formants + 1):
+            f = formant.get_value_at_time(i, duration / 2)  # 0.01秒時点での第iフォルマント
+            formants.append(f if f is not None else 0.0)
+        return formants
+    except Exception:
+        return [0.0] * n_formants
 
 def default_f0_estimator(wave, sr):
     try:
@@ -87,7 +104,7 @@ class VoiceAnalyzer(threading.Thread):
             next_time += interval
 
             samples = self.ring.get()
-            if samples.size < 1024:
+            if samples.size < 2048:
                 continue  # or sleep(0.001)
 
             # FFT & 基音
@@ -117,7 +134,41 @@ class VoiceAnalyzer(threading.Thread):
                         print(f"[DEBUG] Harmonic {i}: Target {target:.2f} Hz → Closest bin {peak_freq:.2f} Hz, Amp = {amp:.3f}, FT_L={ft_l}, FT_H={ft_h}", file=sys.stderr)
 
                     self.osc.send_message(PARAM_GAIN[i - 1], float(amp))
+                
+                # フォルマント送信（Parselmouth 使用）
+                formants = estimate_formants_parselmouth(samples, self.sr)
+                restored = []
+                for i, freq in enumerate(formants[:4], 1):
+                    if not math.isnan(freq) and freq > 0:
+                        freq_q = max(0, min(65535, int(round(freq))))
+                        inv_l = 1 / (freq_q & 0x7F) if (freq_q & 0x7F) > 0 else -1.0
+                        inv_h = 1 / ((freq_q >> 7) & 0x7F) if ((freq_q >> 7) & 0x7F) > 0 else -1.0
+                        param_l, param_h = PARAM_FORMANT[i]
+                        self.osc.send_message(param_l, inv_l)
+                        self.osc.send_message(param_h, inv_h)
 
+                        # 復元用デバッグ値
+                        restored_freq = 0.0
+                        if inv_l > 0:
+                            restored_freq += 1.0 / inv_l
+                        if inv_h > 0:
+                            restored_freq += (1.0 / inv_h) * 128.0
+                        restored.append(restored_freq)
+                    else:
+                        # NaN や 0 Hz 以下の場合は -1.0 を送る（≒無効値）
+                        param_l, param_h = PARAM_FORMANT[i]
+                        self.osc.send_message(param_l, -1.0)
+                        self.osc.send_message(param_h, -1.0)
+
+                if self.running.is_set():
+                    while len(restored) < 4:
+                        restored.append(0.0)  # 足りないぶんは 0.0 で埋める
+                    debug_str = ", ".join(f"F{i}={restored[i - 1]:.1f}Hz" for i in range(1, 5))
+                    print(f"[DEBUG] F1~F4 restored: " +
+                        ", ".join(f"F{i}={restored[i-1]:.1f}Hz" for i in range(1, 5)),
+                        file=sys.stderr)
+                # if DEBUG:
+                    # print(f"[DEBUG] sound duration: {duration:.4f}s", file=sys.stderr)
 
             send_count += 1
             now = time.perf_counter()
