@@ -56,7 +56,7 @@ Shader "Unlit/FormantScroll"
 
             half4 frag(v2f i) : SV_Target
             {
-                float MAX_HZ = 4096.0;
+                float MAX_HZ = 8192.0;
                 float y = i.uv.y;
                 float x = i.uv.x;
 
@@ -72,7 +72,7 @@ Shader "Unlit/FormantScroll"
 
                 // 1kHzごとの太線
                 [unroll]
-                for (int k = 1; k <= 4; ++k)
+                for (int k = 1; k <= 8; ++k)
                 {
                     float freq = 1000.0 * k;
                     float yLine = freq / MAX_HZ;
@@ -82,7 +82,7 @@ Shader "Unlit/FormantScroll"
 
                 // 500Hzごとの薄線（1kHz除外）
                 [unroll]
-                for (int k = 1; k <= 7; ++k)
+                for (int k = 1; k <= 16; ++k)
                 {
                     float freq = 500.0 * k;
                     if (freq % 1000 == 0) continue; // 重複回避
@@ -95,7 +95,7 @@ Shader "Unlit/FormantScroll"
                 ret.rgb = max(ret.rgb, gridColor);
 
                 // 右端にフォルマントをプロット
-                if (x > 1.0 - _PixelX * 1.5 && _G1 > 0.01)
+                if (x > 1.0 - _PixelX * 1.5 && _G1 > 0.05)
                 {
                     float f1 = decodeFreq(_F1_L, _F1_H);
                     float f2 = decodeFreq(_F2_L, _F2_H);

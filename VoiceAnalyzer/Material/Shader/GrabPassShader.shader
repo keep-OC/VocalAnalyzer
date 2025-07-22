@@ -83,7 +83,7 @@ Shader "Unlit/GrabPassShader"
 
             half4 frag(v2f i) : SV_Target
             {
-                float MAX_HZ = 4096.0;
+                float MAX_HZ = 8192.0;
                 // sample the texture
                 // fixed4 col = tex2D(_GrabPassTexture, i.uv);
                 // apply fog
@@ -109,6 +109,13 @@ Shader "Unlit/GrabPassShader"
                     {
                         f0 += (1.0 / _FT_H) * 128.0;
                     }
+
+                    const float A = 82.407;
+                    const float B = 783.991;
+                    const float log2A = 6.373;  // log2(82.407)
+                    const float log2B = 9.608;  // log2(783.991)
+                    float norm = saturate(f0 / 16383.0);
+                    f0 = A * pow(B / A, norm);
 
                     f0 = max(f0, 1.0);
 
@@ -152,17 +159,16 @@ Shader "Unlit/GrabPassShader"
 
                     // ==== 罫線表示（Y方向） ====
                     float lineWidth = _PixelX * 1.0;
-                    float yHz = i.uv.y * MAX_HZ;
                     float lineIntensity = 0.0;
 
-                    for (int k = 1; k <= 16; ++k) {
+                    for (int k = 1; k <= 8; ++k) {
                         float freq = 1000.0 * k;
                         float yLine = freq / MAX_HZ;
                         float dist = abs(i.uv.y - yLine);
                         lineIntensity = max(lineIntensity, smoothstep(lineWidth, 0.0, dist));
                     }
 
-                    for (int k = 1; k <= 32; ++k) {
+                    for (int k = 1; k <= 16; ++k) {
                         float freq = 500.0 * k;
                         if (freq % 1000 == 0) continue; // 重複回避
                         float yLine = freq / MAX_HZ;

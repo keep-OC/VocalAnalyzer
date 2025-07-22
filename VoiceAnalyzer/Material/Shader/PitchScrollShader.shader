@@ -48,9 +48,12 @@ Shader "Unlit/PitchScrollShader"
 
             float freqToY(float f)
             {
-                const float C2 = 65.406f;
+                /*const float C2 = 65.406f;
                 const float C5 = 523.251f;
-                return saturate((log2(f / C2)) / (log2(C5 / C2)));
+                return saturate((log2(f / C2)) / (log2(C5 / C2)));*/
+                const float E2 = 82.407f;
+                const float G5 = 783.991f;
+                return saturate((log2(f / E2)) / (log2(G5 / E2)));
             }
 
             half4 frag(v2f i) : SV_Target
@@ -60,8 +63,8 @@ Shader "Unlit/PitchScrollShader"
                 half4 col = (srcUV.x <= 1.0) ? tex2D(_GrabPassTexture, srcUV) : half4(0, 0, 0, 1);
 
                 // ==== ‰¹ŠKŒrü•\Ž¦ ====
-                const int semitoneStart = 36; // C2
-                const int semitoneEnd = 72;   // C5
+                const int semitoneStart = 40; // E2
+                const int semitoneEnd = 79;   // G5
 
                 for (int midi = semitoneStart; midi <= semitoneEnd; ++midi)
                 {
@@ -69,39 +72,38 @@ Shader "Unlit/PitchScrollShader"
                     float y = freqToY(freq);
                     float dist = abs(uv.y - y);
 
-                    int note = midi % 12;
-
                     float3 lineColor;
                     float thickness;
 
-                    if (midi == 36 || midi == 48 || midi == 60 || midi == 72) {
-                        lineColor = float3(1.0, 1.0, 1.0); // C2,3,4,5
-                        thickness = 0.003; // 1px‹­
+                    if (midi == 48 || midi == 60 || midi == 72) { // C3, C4, C5
+                        lineColor = float3(1.0, 1.0, 1.0); // ‘¾”’ü
+                        thickness = 0.002;
                     }
-                    else if (note == 0 || note == 2 || note == 4 || note == 5 || note == 7 || note == 9 || note == 11) {
+                    else if (!isBlackKey(midi)) {
                         lineColor = float3(0.5, 0.5, 0.5); // ”’Œ®
-                        thickness = 0.001; // –ñ0.5px
+                        thickness = 0.001;
                     }
                     else {
                         lineColor = float3(0.1, 0.1, 0.1); // •Œ®
-                        thickness = 0.001; // “¯ã
+                        thickness = 0.001;
                     }
 
-                    // ‘Ö‚í‚è‚É step() ‚ðŽg‚Á‚Äâ‘Î‚Éü‚ðo‚·
                     if (dist < thickness) {
                         col.rgb = lineColor;
                     }
                 }
 
                 // f0 ‚Ì•œŒ³
+
                 float f0 = 0.0;
                 if (_FT_L > 0) f0 += 1.0 / _FT_L;
                 if (_FT_H > 0) f0 += (1.0 / _FT_H) * 128.0;
 
-                // C2`C5 ‚Ì”ÍˆÍ“à‚©Šm”F
-                if (_G1 > 0.05 && f0 >= 65.406 && f0 <= 523.251 && uv.x > 1.0 - _PixelX * 1.5)
+                // E2`G5 ‚Ì”ÍˆÍ“à‚©Šm”F
+                if (_G1 > 0.05 && f0 >= 0 && f0 <= 16383 && uv.x > 1.0 - _PixelX * 1.5)
                 {
-                    float y = freqToY(f0);
+                    // float y = freqToY(f0);
+                    float y = (f0 / 16383.0);
                     float dist = abs(uv.y - y);
                     float size = 0.005;
                     float intensity = smoothstep(size, 0.0, dist);

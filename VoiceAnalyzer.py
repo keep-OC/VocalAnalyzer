@@ -54,6 +54,8 @@ def default_f0_estimator(wave, sr):
     except Exception:
         return 0.0
 
+def log_scale(x, A, B):
+    return (np.log(x) - np.log(A)) / (np.log(B) - np.log(A))
 
 class RingBuffer:
     def __init__(self, size):
@@ -108,10 +110,14 @@ class VoiceAnalyzer(threading.Thread):
                 continue  # or sleep(0.001)
 
             # FFT & 基音
+            E2_freq = 82.407
+            G5_freq = 783.991
             spec  = np.abs(np.fft.rfft(samples))
             freqs = np.fft.rfftfreq(samples.size, 1 / self.sr)
             f0 = float(self.f0_func(samples, self.sr))
-            f0_q = max(0, min(65535, int(round(f0))))
+            f0_q = log_scale(f0, E2_freq, G5_freq) * 16383
+            f0_q = max(0, min(16383, int(round(f0_q))))
+            # f0_q = max(0, min(65535, int(round(f0))))
 
             ft_l = 1 / (f0_q & 0x7F) if (f0_q & 0x7F) > 0 else -1.0
             ft_h = 1 / ((f0_q >> 7) & 0x7F) if ((f0_q >> 7) & 0x7F) > 0 else -1.0
@@ -140,33 +146,36 @@ class VoiceAnalyzer(threading.Thread):
                 restored = []
                 for i, freq in enumerate(formants[:4], 1):
                     if not math.isnan(freq) and freq > 0:
-                        freq_q = max(0, min(65535, int(round(freq))))
+                        # freq_q = np.log2(freq) / np.log2(64) - np.log2(8192) / np.log2(64)
+                        # freq_q = log_scale(freq, 1, 8191) * 16383
+                        # freq_q = max(0, min(16383, int(round(freq_q))))
+                        freq_q = max(0, min(8192, int(round(freq))))
                         inv_l = 1 / (freq_q & 0x7F) if (freq_q & 0x7F) > 0 else -1.0
                         inv_h = 1 / ((freq_q >> 7) & 0x7F) if ((freq_q >> 7) & 0x7F) > 0 else -1.0
                         param_l, param_h = PARAM_FORMANT[i]
                         self.osc.send_message(param_l, inv_l)
                         self.osc.send_message(param_h, inv_h)
 
-                        # 復元用デバッグ値
-                        restored_freq = 0.0
-                        if inv_l > 0:
-                            restored_freq += 1.0 / inv_l
-                        if inv_h > 0:
-                            restored_freq += (1.0 / inv_h) * 128.0
-                        restored.append(restored_freq)
-                    else:
-                        # NaN や 0 Hz 以下の場合は -1.0 を送る（≒無効値）
-                        param_l, param_h = PARAM_FORMANT[i]
-                        self.osc.send_message(param_l, -1.0)
-                        self.osc.send_message(param_h, -1.0)
+                #         # 復元用デバッグ値
+                #         restored_freq = 0.0
+                #         if inv_l > 0:
+                #             restored_freq += 1.0 / inv_l
+                #         if inv_h > 0:
+                #             restored_freq += (1.0 / inv_h) * 128.0
+                #         restored.append(restored_freq)
+                #     else:
+                #         # NaN や 0 Hz 以下の場合は -1.0 を送る（≒無効値）
+                #         param_l, param_h = PARAM_FORMANT[i]
+                #         self.osc.send_message(param_l, -1.0)
+                #         self.osc.send_message(param_h, -1.0)
 
-                if self.running.is_set():
-                    while len(restored) < 4:
-                        restored.append(0.0)  # 足りないぶんは 0.0 で埋める
-                    debug_str = ", ".join(f"F{i}={restored[i - 1]:.1f}Hz" for i in range(1, 5))
-                    print(f"[DEBUG] F1~F4 restored: " +
-                        ", ".join(f"F{i}={restored[i-1]:.1f}Hz" for i in range(1, 5)),
-                        file=sys.stderr)
+                # if self.running.is_set():
+                #     while len(restored) < 4:
+                #         restored.append(0.0)  # 足りないぶんは 0.0 で埋める
+                #     debug_str = ", ".join(f"F{i}={restored[i - 1]:.1f}Hz" for i in range(1, 5))
+                #     print(f"[DEBUG] F1~F4 restored: " +
+                #         ", ".join(f"F{i}={restored[i-1]:.1f}Hz" for i in range(1, 5)),
+                #         file=sys.stderr)
                 # if DEBUG:
                     # print(f"[DEBUG] sound duration: {duration:.4f}s", file=sys.stderr)
 
