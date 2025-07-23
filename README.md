@@ -11,8 +11,9 @@ VRChat 上でグローバルに動作する音声解析ツールです。主な�
   - カスタムで 20 倍音まで表示を拡張可能です（詳細は後述します）
   - デフォルトで expression parameter を 83 bits 消費します（20 倍音まで表示する場合は 163 bits 消費します）
 - ピッチモニター (PitchMonitor)
+  - 基音のピッチを表示します
   - E2 から G5 を表示します
-  - expression parameter を 19 bits 消費します
+  - expression parameter を 27 bits 消費します
 - フォルマントモニター (FormantMonitor)
   - 第一フォルマントから第四フォルマントを表示します
   - 0 Hz から 8192 Hz を表示します
