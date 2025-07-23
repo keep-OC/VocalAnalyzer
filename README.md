@@ -22,7 +22,8 @@ VRChat 上でグローバルに動作する音声解析ツールです。主な�
 ## 開発環境
 
 - Unity version 2022.3.22f1
-- VRChat SDK 3.7.6
+- VRChat SDK - Base 3.7.6
+- VRChat SDK - Avatars 3.7.6
 - Modular Avatar 1.13.0
 
 ## 導入方法
