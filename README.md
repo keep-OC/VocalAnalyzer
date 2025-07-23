@@ -55,3 +55,5 @@ Modular Avalar に対応しているため、prefab をアバター直下に配�
 - アップロードすると表示用の Quad が変な位置（頭のはるか上）などにある場合
   - Spectrogram(or PitchMonitor, FormantMonitor)/Other/BoneProxy のターゲットを Head ではなく例えば hand R などに変更し、Spectrogram/Other/Constraint の Zero を設定してください
     - 右手に表示用 Quad が追従してくるはずなので、使うときは適当な位置で FixPosition してください
+- 既知の不具合
+  - グローバルで見た場合に、あるピッチから下のピッチが表示されない（ローカルなら正しく見える）
