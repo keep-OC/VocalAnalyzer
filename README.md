@@ -15,6 +15,7 @@ VRChat 上でグローバルに動作する音声解析ツールです。主な�
   - expression parameter を 19 bits 消費します
 - フォルマントモニター (FormantMonitor)
   - 第一フォルマントから第四フォルマントを表示します
+  - 0 Hz から 8192 Hz を表示します
   - expression parameter を 67 bits 消費します
 
 ## 開発環境
