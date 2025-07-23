@@ -45,12 +45,13 @@ Modular Avatar に対応しているため、prefab をアバター直下に配�
 ## 注意事項
 
 - 全ての機能をまるっと含めると expression parameter が不足する可能性があるのでお気をつけください
+  - Spectrogram, PitchMonitor, FormantMonitor の 3 つを含めるとデフォルトで 169 bits 消費します
 - 本アセットおよび付属の OSC アプリは、無保証で提供されています。使用に際して発生したいかなる損害・不具合についても、開発者は一切の責任を負いません。使用はすべて自己責任でお願いいたします。
 
 ## その他
 
 - スペクトログラムの表示倍音を増やす（減らす）方法
-  - Spectrogram の MA parameters から *G~~* (ex. G10, G11)のパラメータを増やしたり減らしたりしてください
+  - Spectrogram の MA parameters にある未登録パラメータのタブから *G~~* (ex. G10, G11) のパラメータを増やしたり減らしたりしてください
   - *G~~* のパラメータを追加した際に名前の右にあるタブが "Animatorのみ" になる場合、"Float" に変更してください
 - アップロードすると表示用の Quad が変な位置（頭のはるか上）などにある場合
   - Spectrogram(or PitchMonitor, FormantMonitor)/Other/BoneProxy のターゲットを Head ではなく例えば hand R などに変更し、Spectrogram/Other/Constraint の Zero を設定してください
