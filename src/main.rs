@@ -1,4 +1,8 @@
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
+use std::sync::Arc;
+use std::thread;
+use std::time::Duration;
 
 use eframe::egui;
 use wasapi;
@@ -15,9 +19,18 @@ fn main() -> eframe::Result {
 }
 
 struct MyApp {
-    is_running: bool,
+    is_running: Arc<AtomicBool>,
     device_names: HashMap<String, String>,
     device_id: String,
+}
+
+fn run(is_running: Arc<AtomicBool>) {
+    loop {
+        if is_running.load(Relaxed) {
+            println!("running");
+        }
+        thread::sleep(Duration::from_millis(1000));
+    }
 }
 
 impl MyApp {
@@ -36,8 +49,13 @@ impl MyApp {
             .collect();
         let default_device = wasapi::get_default_device(&direction).unwrap();
         let device_id = default_device.get_id().unwrap();
+        let is_running = Arc::new(AtomicBool::new(false));
+        {
+            let is_running = is_running.clone();
+            thread::spawn(move || run(is_running));
+        }
         Self {
-            is_running: false,
+            is_running,
             device_names,
             device_id,
         }
@@ -47,7 +65,7 @@ impl MyApp {
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.add_enabled_ui(!self.is_running, |ui| {
+            ui.add_enabled_ui(!self.is_running.load(Relaxed), |ui| {
                 egui::ComboBox::from_label("")
                     .selected_text(&self.device_names[&self.device_id])
                     .show_ui(ui, |ui| {
@@ -58,17 +76,17 @@ impl eframe::App for MyApp {
                     })
             });
             ui.horizontal(|ui| {
-                ui.add_enabled_ui(!self.is_running, |ui| {
+                ui.add_enabled_ui(!self.is_running.load(Relaxed), |ui| {
                     if ui.button("Start").clicked() {
-                        self.is_running = true;
+                        self.is_running.store(true, Relaxed);
                     }
                 });
                 if ui.button("Stop").clicked() {
-                    self.is_running = false;
+                    self.is_running.store(false, Relaxed);
                 }
             });
             ui.add_space(20.0);
-            if self.is_running {
+            if self.is_running.load(Relaxed) {
                 ui.label(format!(
                     "Status: Runnning on {}...",
                     self.device_names[&self.device_id]
