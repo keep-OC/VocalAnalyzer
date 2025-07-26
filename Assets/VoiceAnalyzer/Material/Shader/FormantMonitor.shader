@@ -49,8 +49,8 @@ Shader "Unlit/FormantScroll"
             float decodeFreq(float low, float high)
             {
                 float f = 0.0;
-                if (low > 0.0) f += 1.0 / low;
-                if (high > 0.0) f += (1.0 / high) * 128.0;
+                if (low > 0.0) f += low * 127;
+                if (high > 0.0) f += (high * 127) * 128.0;
                 return f;
             }
 

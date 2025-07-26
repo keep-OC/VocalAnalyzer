@@ -102,12 +102,12 @@ Shader "Unlit/GrabPassShader"
                     float f0 = 0;
                     if (_FT_L > 0)
                     {
-                        f0 += 1.0 / _FT_L;
+                        f0 += _FT_L * 127;
                     }
 
                     if (_FT_H > 0)
                     {
-                        f0 += (1.0 / _FT_H) * 128.0;
+                        f0 += (_FT_H * 127) * 128.0;
                     }
 
                     const float A = 82.407;

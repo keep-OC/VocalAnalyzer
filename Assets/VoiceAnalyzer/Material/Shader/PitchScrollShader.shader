@@ -96,8 +96,8 @@ Shader "Unlit/PitchScrollShader"
                 // f0 ‚Ì•œŒ³
 
                 float f0 = 0.0;
-                if (_FT_L > 0) f0 += 1.0 / _FT_L;
-                if (_FT_H > 0) f0 += (1.0 / _FT_H) * 128.0;
+                if (_FT_L > 0) f0 += _FT_L * 127;
+                if (_FT_H > 0) f0 += (_FT_H * 127) * 128.0;
 
                 // E2`G5 ‚Ì”ÍˆÍ“à‚©Šm”F
                 if (_G1 > 0.05 && f0 >= 0 && f0 <= 16383 && uv.x > 1.0 - _PixelX * 1.5)
