@@ -32,7 +32,12 @@ VocalAnalyzer を使用するためには **アセットが組み込まれたア
 
 ### アセットが組み込まれたアバターのアップロード
 
-VocalAnalyzer.unitypackage をアバターのプロジェクトにインポートし、使用したい機能に対応した prefab をアバター直下に配置してください。  
+1. VocalAnalyzer.unitypackage をアバターのプロジェクトにインポートしてください
+2. 使用したい機能に対応した prefab をアバター直下に配置してください
+3. 配置した prefab すべてに対して other/constraint を inspector 上で表示してください
+  - PitchMonitor と FormantMonitor を配置した場合、PitchMonitor/other/constraint と FormantMonitor/other/constraint を Hierarchy でクリックしてください（クリックするだけで OK です）
+  - この手順を踏まないと表示用 Quad が頭のかなり上のほうに表示されてしまう可能性があります（いい感じの回避策をご存知の方がいらっしゃたら教えていただけると嬉しいです）
+
 Modular Avatar に対応しているため、prefab をアバター直下に配置してアップロードするだけで動作するはずです。
 
 ### OSC アプリの実行
@@ -54,7 +59,4 @@ Modular Avatar に対応しているため、prefab をアバター直下に配�
   - Spectrogram の MA parameters にある未登録パラメータのタブから *G~~* (ex. G10, G11) のパラメータを増やしたり減らしたりしてください
   - *G~~* のパラメータを追加した際に名前の右にあるタブが "Animatorのみ" になる場合、"Float" に変更してください
 - アップロードすると表示用の Quad が変な位置（頭のはるか上）などにある場合
-  - Spectrogram(or PitchMonitor, FormantMonitor)/Other/BoneProxy のターゲットを Head ではなく例えば hand R などに変更し、Spectrogram/Other/Constraint の Zero を設定してください
-    - 右手に表示用 Quad が追従してくるはずなので、使うときは適当な位置で FixPosition してください
-- 既知の不具合
-  - グローバルで見た場合に、あるピッチから下のピッチが表示されない（ローカルなら正しく見える）
+  - **アセットが組み込まれたアバターのアップロード** の手順 3 を行ってみてください
