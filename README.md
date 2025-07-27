@@ -34,11 +34,11 @@ VocalAnalyzer を使用するためには **アセットが組み込まれたア
 
 1. VocalAnalyzer.unitypackage をアバターのプロジェクトにインポートしてください
 2. 使用したい機能に対応した prefab をアバター直下に配置してください
-3. 配置した prefab すべてに対して other/constraint を inspector 上で表示してください
-  - PitchMonitor と FormantMonitor を配置した場合、PitchMonitor/other/constraint と FormantMonitor/other/constraint を Hierarchy でクリックしてください（クリックするだけで OK です）
+3. 配置した prefab すべてに対して Other/Constraint を Inspector 上で表示してください
+  - PitchMonitor と FormantMonitor を配置した場合、PitchMonitor/Other/Constraint と FormantMonitor/Other/Constraint を Hierarchy でクリックしてください（クリックするだけで OK です）
   - この手順を踏まないと表示用 Quad が頭のかなり上のほうに表示されてしまう可能性があります（いい感じの回避策をご存知の方がいらっしゃたら教えていただけると嬉しいです）
 
-Modular Avatar に対応しているため、prefab をアバター直下に配置してアップロードするだけで動作するはずです。
+Modular Avatar に対応しているため、上記操作ののちアップロードするだけで動作するはずです。
 
 ### OSC アプリの実行
 
@@ -46,6 +46,23 @@ Modular Avatar に対応しているため、prefab をアバター直下に配�
 2. 音声入力に使いたいマイクを選択してください
 3. start ボタンを押してから、音声を入力し、インジケーターが 6~7 割の位置にくるようにスライダーの位置を調整してください
 4. start が押された後、stop ボタンが押されるまでは常に音声解析結果が OSC で送信されています
+
+### VRChat 上での操作方法
+
+Expression Menu に配置した prefab に応じた SubMenu が追加されているはずです。  
+使いたい機能の **Enable + Scroll ON** を ON にしていただくと表示用 Quad の更新が行われます。
+
+- Expression Menu に配置した prefab に応じた SubMenu が追加されます
+- 各 SubMenu には下記の toggle が登録されています
+  - Enable
+    - false (default) : 表示用 Quad が非表示になります
+    - true : 表示用 Quad が表示されます
+  - Scroll ON
+    - false (default) : 表示用 Quad の画面更新が無効化されます（画面の一時停止にも利用可能です）
+    - true : 表示用 Quad の画面更新が有効かされます
+  - FixPosition
+    - false (default) : 表示用 Quad が導入したアバターの head ボーンに追従します
+    - true : 表示用 Quad がワールド座標に固定されます
 
 ## 注意事項
 
