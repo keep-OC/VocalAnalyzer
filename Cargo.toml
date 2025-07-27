@@ -5,4 +5,5 @@ edition = "2021"
 
 [dependencies]
 eframe = "0.32.0"
+pitch-detection = "0.3.0"
 wasapi = "0.19.0"

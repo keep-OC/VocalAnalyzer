@@ -2,6 +2,8 @@ use std::collections::VecDeque;
 use std::sync::mpsc;
 use std::thread;
 
+use pitch_detection::detector::PitchDetector;
+
 type Res<T> = Result<T, Box<dyn std::error::Error>>;
 
 fn get_device(device_id: &str) -> Res<wasapi::Device> {
@@ -59,7 +61,7 @@ fn capture_loop(
 
 pub struct Analyzer {
     rx: mpsc::Receiver<Vec<u8>>,
-    _waveformat: wasapi::WaveFormat,
+    waveformat: wasapi::WaveFormat,
     _worker: Option<thread::JoinHandle<()>>,
 }
 
@@ -77,14 +79,23 @@ impl Analyzer {
         println!("{:?}", waveformat);
         Self {
             rx,
-            _waveformat: waveformat,
+            waveformat,
             _worker: worker.into(),
         }
     }
     pub fn periodic(&self) {
+        let sample_rate = self.waveformat.get_samplespersec() as usize;
         if let Ok(v) = self.rx.try_recv() {
-            let samples = v.iter().take(8).collect::<Vec<_>>();
-            println!("{}: {:?}...", v.iter().count(), samples);
+            let samples: Vec<f32> = v
+                .chunks_exact(4)
+                .map(|chunk| f32::from_le_bytes(chunk.try_into().unwrap()))
+                .collect();
+            let right: Vec<f32> = samples.chunks_exact(2).map(|chunk| chunk[0]).collect();
+            let mut detector = pitch_detection::detector::yin::YINDetector::new(4096, 0);
+            let pitch = detector.get_pitch(&right, sample_rate, 0.3, 0.0);
+            if let Some(pitch) = pitch {
+                println!("{:?}", pitch.frequency);
+            }
         }
     }
 }
