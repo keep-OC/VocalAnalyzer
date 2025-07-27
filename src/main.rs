@@ -1,3 +1,5 @@
+mod timer;
+
 use std::collections::HashMap;
 
 use eframe::egui;
@@ -15,7 +17,7 @@ fn main() -> eframe::Result {
 }
 
 struct MyApp {
-    is_running: bool,
+    timer: Option<timer::Timer>,
     device_names: HashMap<String, String>,
     device_id: String,
 }
@@ -37,17 +39,20 @@ impl MyApp {
         let default_device = wasapi::get_default_device(&direction).unwrap();
         let device_id = default_device.get_id().unwrap();
         Self {
-            is_running: false,
+            timer: None,
             device_names,
             device_id,
         }
+    }
+    fn is_running(&self) -> bool {
+        self.timer.is_some()
     }
 }
 
 impl eframe::App for MyApp {
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.add_enabled_ui(!self.is_running, |ui| {
+            ui.add_enabled_ui(!self.is_running(), |ui| {
                 egui::ComboBox::from_label("")
                     .selected_text(&self.device_names[&self.device_id])
                     .show_ui(ui, |ui| {
@@ -58,17 +63,17 @@ impl eframe::App for MyApp {
                     })
             });
             ui.horizontal(|ui| {
-                ui.add_enabled_ui(!self.is_running, |ui| {
+                ui.add_enabled_ui(!self.is_running(), |ui| {
                     if ui.button("Start").clicked() {
-                        self.is_running = true;
+                        self.timer = timer::Timer::new(&self.device_id).into();
                     }
                 });
                 if ui.button("Stop").clicked() {
-                    self.is_running = false;
+                    self.timer.take();
                 }
             });
             ui.add_space(20.0);
-            if self.is_running {
+            if self.is_running() {
                 ui.label(format!(
                     "Status: Runnning on {}...",
                     self.device_names[&self.device_id]
