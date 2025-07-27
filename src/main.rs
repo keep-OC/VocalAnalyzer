@@ -1,5 +1,4 @@
 mod analyzer;
-mod timer;
 
 use std::collections::HashMap;
 
@@ -18,7 +17,6 @@ fn main() -> eframe::Result {
 }
 
 struct MyApp {
-    timer: Option<timer::Timer>,
     analyzer: Option<analyzer::Analyzer>,
     device_names: HashMap<String, String>,
     device_id: String,
@@ -41,14 +39,13 @@ impl MyApp {
         let default_device = wasapi::get_default_device(&direction).unwrap();
         let device_id = default_device.get_id().unwrap();
         Self {
-            timer: None,
             analyzer: None,
             device_names,
             device_id,
         }
     }
     fn is_running(&self) -> bool {
-        self.timer.is_some()
+        self.analyzer.is_some()
     }
 }
 
@@ -69,11 +66,10 @@ impl eframe::App for MyApp {
                 ui.add_enabled_ui(!self.is_running(), |ui| {
                     if ui.button("Start").clicked() {
                         let analyzer = analyzer::Analyzer::new(&self.device_id);
-                        self.timer = timer::Timer::new(move || analyzer.periodic()).into();
+                        self.analyzer = analyzer.into();
                     }
                 });
                 if ui.button("Stop").clicked() {
-                    self.timer.take();
                     self.analyzer.take();
                 }
             });

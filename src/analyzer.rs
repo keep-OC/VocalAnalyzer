@@ -59,43 +59,62 @@ fn capture_loop(
     Ok(())
 }
 
-pub struct Analyzer {
+pub struct Capturer {
     rx: mpsc::Receiver<Vec<u8>>,
     waveformat: wasapi::WaveFormat,
-    _worker: Option<thread::JoinHandle<()>>,
 }
 
-impl Analyzer {
+impl Capturer {
     pub fn new(device_id: &str) -> Self {
         let device_id = device_id.to_owned();
         let device = get_device(&device_id).unwrap();
         let waveformat = device.get_iaudioclient().unwrap().get_mixformat().unwrap();
         let channels = waveformat.get_nchannels() as usize;
         let (tx, rx) = mpsc::sync_channel(channels);
-        let worker = thread::spawn(move || {
+        thread::spawn(move || {
             let device = get_device(&device_id).unwrap();
             capture_loop(device, tx, 4096).unwrap();
         });
         println!("{:?}", waveformat);
-        Self {
-            rx,
-            waveformat,
-            _worker: worker.into(),
-        }
+        Self { rx, waveformat }
     }
-    pub fn periodic(&self) {
-        let sample_rate = self.waveformat.get_samplespersec() as usize;
-        if let Ok(v) = self.rx.try_recv() {
-            let samples: Vec<f32> = v
-                .chunks_exact(4)
-                .map(|chunk| f32::from_le_bytes(chunk.try_into().unwrap()))
-                .collect();
-            let right: Vec<f32> = samples.chunks_exact(2).map(|chunk| chunk[0]).collect();
-            let mut detector = pitch_detection::detector::yin::YINDetector::new(4096, 0);
-            let pitch = detector.get_pitch(&right, sample_rate, 0.3, 0.0);
-            if let Some(pitch) = pitch {
-                println!("{:?}", pitch.frequency);
+}
+
+pub struct Analyzer {
+    stop_sender: mpsc::Sender<()>,
+}
+
+impl Analyzer {
+    pub fn new(device_id: &str) -> Self {
+        let (stop_sender, stop) = mpsc::channel();
+        let capturer = Capturer::new(device_id);
+        let sample_rate = capturer.waveformat.get_samplespersec() as usize;
+        thread::spawn(move || loop {
+            if let Ok(()) = stop.try_recv() {
+                break;
             }
-        }
+            if let Ok(v) = capturer.rx.try_recv() {
+                let samples: Vec<f32> = v
+                    .chunks_exact(4)
+                    .map(|chunk| f32::from_le_bytes(chunk.try_into().unwrap()))
+                    .collect();
+                let right: Vec<f32> = samples.chunks_exact(2).map(|chunk| chunk[0]).collect();
+                let mut detector = pitch_detection::detector::yin::YINDetector::new(4096, 0);
+                let pitch = detector.get_pitch(&right, sample_rate, 0.0, 0.0);
+                if let Some(pitch) = pitch {
+                    println!("{:?}", pitch.frequency);
+                } else {
+                    println!("pitch not detected");
+                }
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        });
+        Self { stop_sender }
+    }
+}
+
+impl Drop for Analyzer {
+    fn drop(&mut self) {
+        self.stop_sender.send(()).unwrap();
     }
 }
