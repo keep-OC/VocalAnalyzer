@@ -1,3 +1,4 @@
+mod analyzer;
 mod timer;
 
 use std::collections::HashMap;
@@ -65,7 +66,8 @@ impl eframe::App for MyApp {
             ui.horizontal(|ui| {
                 ui.add_enabled_ui(!self.is_running(), |ui| {
                     if ui.button("Start").clicked() {
-                        self.timer = timer::Timer::new(&self.device_id).into();
+                        let mut analyzer = analyzer::Analyzer::new(self.device_id.clone());
+                        self.timer = timer::Timer::new(move || analyzer.periodic()).into();
                     }
                 });
                 if ui.button("Stop").clicked() {

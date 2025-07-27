@@ -12,7 +12,10 @@ const UPDATE_FREQUENCY_HZ: u64 = 60;
 const INTERVAL: Duration = Duration::from_micros(1_000_000 / UPDATE_FREQUENCY_HZ);
 
 impl Timer {
-    pub fn new(device_id: &String) -> Self {
+    pub fn new<F>(mut f: F) -> Self
+    where
+        F: FnMut() + Send + 'static,
+    {
         let (stop, stop_receiver) = mpsc::channel();
         let (interval, interval_receiver) = mpsc::channel();
         let timer_thread = thread::spawn(move || loop {
@@ -24,12 +27,9 @@ impl Timer {
             interval.send(()).unwrap();
         })
         .into();
-        let message = device_id.to_owned();
         let worker = thread::spawn(move || {
-            let mut count = 0;
             for _ in interval_receiver {
-                println!("{}, {}", message, count);
-                count += 1;
+                f();
             }
         })
         .into();
