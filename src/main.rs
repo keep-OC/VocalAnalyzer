@@ -19,6 +19,7 @@ fn main() -> eframe::Result {
 
 struct MyApp {
     timer: Option<timer::Timer>,
+    analyzer: Option<analyzer::Analyzer>,
     device_names: HashMap<String, String>,
     device_id: String,
 }
@@ -27,8 +28,8 @@ impl MyApp {
     fn new() -> Self {
         wasapi::initialize_mta().unwrap();
         let direction = wasapi::Direction::Capture;
-        let sound_devices = wasapi::DeviceCollection::new(&direction).unwrap();
-        let device_names = sound_devices
+        let device_collection = wasapi::DeviceCollection::new(&direction).unwrap();
+        let device_names = device_collection
             .into_iter()
             .map(|device| {
                 let device = device.unwrap();
@@ -41,6 +42,7 @@ impl MyApp {
         let device_id = default_device.get_id().unwrap();
         Self {
             timer: None,
+            analyzer: None,
             device_names,
             device_id,
         }
@@ -66,12 +68,13 @@ impl eframe::App for MyApp {
             ui.horizontal(|ui| {
                 ui.add_enabled_ui(!self.is_running(), |ui| {
                     if ui.button("Start").clicked() {
-                        let mut analyzer = analyzer::Analyzer::new(self.device_id.clone());
+                        let analyzer = analyzer::Analyzer::new(&self.device_id);
                         self.timer = timer::Timer::new(move || analyzer.periodic()).into();
                     }
                 });
                 if ui.button("Stop").clicked() {
                     self.timer.take();
+                    self.analyzer.take();
                 }
             });
             ui.add_space(20.0);
