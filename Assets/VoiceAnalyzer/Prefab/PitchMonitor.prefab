@@ -747,7 +747,7 @@ MonoBehaviour:
   SolveInLocalSpace: 0
   FreezeToWorld: 0
   RebakeOffsetsWhenUnfrozen: 0
-  Locked: 1
+  Locked: 0
   Sources:
     source0:
       SourceTransform: {fileID: 5928304182518706502}
@@ -968,7 +968,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   boneReference: 10
   subPath: 
-  attachmentMode: 2
+  attachmentMode: 1
 --- !u!1 &8115938227409646635
 GameObject:
   m_ObjectHideFlags: 0
