@@ -4,7 +4,11 @@ use std::thread;
 
 use pitch_detection::detector::PitchDetector;
 
+use crate::osc::OscSender;
+
 type Res<T> = Result<T, Box<dyn std::error::Error>>;
+
+const CHUNK_SIZE: usize = 2048;
 
 pub fn get_devices() -> Res<Vec<wasapi::Device>> {
     let direction = &wasapi::Direction::Capture;
@@ -76,7 +80,7 @@ impl Capturer {
         let device_id = device_id.to_owned();
         let (tx, rx) = mpsc::sync_channel(1);
         thread::spawn(move || {
-            capture_loop(&device_id, tx, 4096).unwrap();
+            capture_loop(&device_id, tx, CHUNK_SIZE).unwrap();
         });
         Self { rx }
     }
@@ -93,16 +97,19 @@ impl Analyzer {
         let capturer = Capturer::new(device_id);
         let detected_piches = Arc::new(Mutex::new(VecDeque::from([f32::NAN; 100])));
         let clone = detected_piches.clone();
+        let osc_sender = OscSender::new();
         thread::spawn(move || loop {
             if let Ok(()) = stop.try_recv() {
                 break;
             }
             if let Ok(v) = capturer.rx.try_recv() {
-                let mut detector = pitch_detection::detector::yin::YINDetector::new(4096, 0);
+                let mut detector = pitch_detection::detector::yin::YINDetector::new(CHUNK_SIZE, 0);
                 let pitch = detector.get_pitch(&v, 48_000, 0.1, 0.1);
+                let frequency = pitch.map(|p| p.frequency);
+                osc_sender.send_frequency(frequency.unwrap_or(0.0));
                 let mut lock = clone.lock().unwrap();
                 lock.pop_front();
-                lock.push_back(pitch.map_or(f32::NAN, |p| p.frequency));
+                lock.push_back(frequency.unwrap_or(f32::NAN));
             }
             std::thread::sleep(std::time::Duration::from_millis(100));
         });

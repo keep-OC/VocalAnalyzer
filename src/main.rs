@@ -1,9 +1,10 @@
-mod analyzer;
-
 use std::collections::HashMap;
 
 use eframe::egui;
 use wasapi;
+
+mod analyzer;
+mod osc;
 
 fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
