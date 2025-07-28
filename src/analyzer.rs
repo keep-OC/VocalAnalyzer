@@ -1,5 +1,5 @@
 use std::collections::VecDeque;
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 
 use pitch_detection::detector::PitchDetector;
@@ -84,12 +84,15 @@ impl Capturer {
 
 pub struct Analyzer {
     stop_sender: mpsc::Sender<()>,
+    pub detected_piches: Arc<Mutex<VecDeque<f32>>>,
 }
 
 impl Analyzer {
     pub fn new(device_id: &str) -> Self {
         let (stop_sender, stop) = mpsc::channel();
         let capturer = Capturer::new(device_id);
+        let detected_piches = Arc::new(Mutex::new(VecDeque::from([f32::NAN; 100])));
+        let clone = detected_piches.clone();
         thread::spawn(move || loop {
             if let Ok(()) = stop.try_recv() {
                 break;
@@ -97,15 +100,16 @@ impl Analyzer {
             if let Ok(v) = capturer.rx.try_recv() {
                 let mut detector = pitch_detection::detector::yin::YINDetector::new(4096, 0);
                 let pitch = detector.get_pitch(&v, 48_000, 0.1, 0.1);
-                if let Some(pitch) = pitch {
-                    println!("{:?}", pitch.frequency);
-                } else {
-                    println!("pitch not detected");
-                }
+                let mut lock = clone.lock().unwrap();
+                lock.pop_front();
+                lock.push_back(pitch.map_or(f32::NAN, |p| p.frequency));
             }
-            std::thread::sleep(std::time::Duration::from_millis(10));
+            std::thread::sleep(std::time::Duration::from_millis(100));
         });
-        Self { stop_sender }
+        Self {
+            stop_sender,
+            detected_piches,
+        }
     }
 }
 

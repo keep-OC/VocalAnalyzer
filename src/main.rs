@@ -8,7 +8,7 @@ use wasapi;
 fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([320.0, 240.0])
+            .with_inner_size([320.0, 250.0])
             .with_drag_and_drop(false),
         ..Default::default()
     };
@@ -21,6 +21,7 @@ struct MyApp {
     device_ids: Vec<String>,
     device_names: HashMap<String, String>,
     device_id: String,
+    show_graph: bool,
 }
 
 impl MyApp {
@@ -47,6 +48,7 @@ impl MyApp {
             device_ids,
             device_names,
             device_id,
+            show_graph: false,
         }
     }
     fn is_running(&self) -> bool {
@@ -79,14 +81,36 @@ impl eframe::App for MyApp {
                     self.analyzer.take();
                 }
             });
-            ui.add_space(20.0);
             if self.is_running() {
                 ui.label(format!(
                     "Status: Runnning on {}...",
                     self.device_names[&self.device_id]
                 ));
             } else {
-                ui.label("Status: Stopped");
+                ui.label("Status: Ready");
+            }
+
+            if let Some(analyzer) = &self.analyzer {
+                ui.checkbox(&mut self.show_graph, "Show graph (may affect performance)");
+                if self.show_graph {
+                    egui_plot::Plot::new("plot")
+                        .view_aspect(2.0)
+                        .sense(egui::Sense::hover())
+                        .show_x(false)
+                        .show_y(false)
+                        .show_axes([false, true])
+                        .show(ui, |plot_ui| {
+                            let lock = analyzer.detected_piches.lock().unwrap();
+                            let series: egui_plot::PlotPoints = lock
+                                .iter()
+                                .enumerate()
+                                .map(|(x, &y)| [x as f64, y.log(10.0) as f64])
+                                .collect();
+                            let line = egui_plot::Line::new("pitch", series);
+                            plot_ui.line(line);
+                        });
+                    ctx.request_repaint();
+                }
             }
         });
     }
