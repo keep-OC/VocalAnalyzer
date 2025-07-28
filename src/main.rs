@@ -7,14 +7,19 @@ mod analyzer;
 mod osc;
 
 fn main() -> eframe::Result {
+    wasapi::initialize_mta().unwrap();
+
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([320.0, 250.0])
             .with_drag_and_drop(false),
         ..Default::default()
     };
-    let app = MyApp::new();
-    eframe::run_native("Vocal Analyzer", options, Box::new(|_cc| Ok(Box::new(app))))
+    eframe::run_native(
+        "Vocal Analyzer",
+        options,
+        Box::new(|cc| Ok(Box::new(MyApp::new(cc)))),
+    )
 }
 
 struct MyApp {
@@ -26,8 +31,19 @@ struct MyApp {
 }
 
 impl MyApp {
-    fn new() -> Self {
-        wasapi::initialize_mta().unwrap();
+    fn new(cc: &eframe::CreationContext<'_>) -> Self {
+        let mut fonts = egui::FontDefinitions::default();
+        fonts.font_data.insert(
+            "Meiryo".to_owned(),
+            egui::FontData::from_static(include_bytes!("C:/Windows/Fonts/Meiryo.ttc")).into(),
+        );
+        fonts
+            .families
+            .entry(egui::FontFamily::Proportional)
+            .or_default()
+            .insert(0, "Meiryo".to_owned());
+        cc.egui_ctx.set_fonts(fonts);
+
         let direction = wasapi::Direction::Capture;
         let devices = analyzer::get_devices().unwrap();
         let device_ids = devices
@@ -92,7 +108,10 @@ impl eframe::App for MyApp {
             }
 
             if let Some(analyzer) = &self.analyzer {
-                ui.checkbox(&mut self.show_graph, "Show graph (may affect performance)");
+                ui.checkbox(
+                    &mut self.show_graph,
+                    "グラフを表示 (パフォーマンスに影響するかも)",
+                );
                 if self.show_graph {
                     egui_plot::Plot::new("plot")
                         .view_aspect(2.0)
