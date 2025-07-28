@@ -18,6 +18,7 @@ fn main() -> eframe::Result {
 
 struct MyApp {
     analyzer: Option<analyzer::Analyzer>,
+    device_ids: Vec<String>,
     device_names: HashMap<String, String>,
     device_id: String,
 }
@@ -26,11 +27,14 @@ impl MyApp {
     fn new() -> Self {
         wasapi::initialize_mta().unwrap();
         let direction = wasapi::Direction::Capture;
-        let device_collection = wasapi::DeviceCollection::new(&direction).unwrap();
-        let device_names = device_collection
-            .into_iter()
+        let devices = analyzer::get_devices().unwrap();
+        let device_ids = devices
+            .iter()
+            .map(|device| device.get_id().unwrap())
+            .collect();
+        let device_names = devices
+            .iter()
             .map(|device| {
-                let device = device.unwrap();
                 let device_name = device.get_friendlyname().unwrap();
                 let device_id = device.get_id().unwrap();
                 (device_id, device_name)
@@ -40,6 +44,7 @@ impl MyApp {
         let device_id = default_device.get_id().unwrap();
         Self {
             analyzer: None,
+            device_ids,
             device_names,
             device_id,
         }
@@ -56,8 +61,9 @@ impl eframe::App for MyApp {
                 egui::ComboBox::from_label("")
                     .selected_text(&self.device_names[&self.device_id])
                     .show_ui(ui, |ui| {
-                        for (device_id, device_name) in self.device_names.iter() {
+                        for device_id in &self.device_ids {
                             let device_id = device_id.to_owned();
+                            let device_name = &self.device_names[&device_id];
                             ui.selectable_value(&mut self.device_id, device_id, device_name);
                         }
                     })

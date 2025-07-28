@@ -6,32 +6,36 @@ use pitch_detection::detector::PitchDetector;
 
 type Res<T> = Result<T, Box<dyn std::error::Error>>;
 
-fn get_device(device_id: &str) -> Res<wasapi::Device> {
+pub fn get_devices() -> Res<Vec<wasapi::Device>> {
     let direction = &wasapi::Direction::Capture;
-    let device_collection = wasapi::DeviceCollection::new(direction)?;
-    let device = device_collection
+    let devices = wasapi::DeviceCollection::new(direction)?
         .into_iter()
         .map(|device| device.unwrap())
+        .collect();
+    Ok(devices)
+}
+
+fn get_device(device_id: &str) -> Res<wasapi::Device> {
+    let device = get_devices()?
+        .into_iter()
         .find(|device| device.get_id().unwrap() == device_id)
         .unwrap();
     Ok(device)
 }
 
-fn capture_loop(
-    device: wasapi::Device,
-    tx: mpsc::SyncSender<Vec<u8>>,
-    chunksize: usize,
-) -> Res<()> {
+fn capture_loop(device_id: &str, tx: mpsc::SyncSender<Vec<f32>>, chunksize: usize) -> Res<()> {
+    let device = get_device(device_id)?;
     let mut audio_client = device.get_iaudioclient()?;
-    let mixformat = audio_client.get_mixformat()?;
-    let blockalign = mixformat.get_blockalign();
+    let sample_type = &wasapi::SampleType::Float;
+    let desired_format = wasapi::WaveFormat::new(32, 32, sample_type, 48000, 2, Some(1));
+    let blockalign = desired_format.get_blockalign();
     let (_def_time, min_time) = audio_client.get_device_period()?;
     let mode = wasapi::StreamMode::EventsShared {
         autoconvert: false,
         buffer_duration_hns: min_time,
     };
     let direction = &wasapi::Direction::Capture;
-    audio_client.initialize_client(&mixformat, direction, &mode)?;
+    audio_client.initialize_client(&desired_format, direction, &mode)?;
     let buffer_size = audio_client.get_buffer_size()?;
     let h_event = audio_client.set_get_eventhandle()?;
     let capture_client = audio_client.get_audiocaptureclient()?;
@@ -41,9 +45,13 @@ fn capture_loop(
     loop {
         let mut stopped = false;
         while sample_queue.len() > (blockalign as usize * chunksize) {
-            let mut chunk = vec![0u8; blockalign as usize * chunksize];
+            let mut chunk = vec![0f32; chunksize];
             for element in chunk.iter_mut() {
-                *element = sample_queue.pop_front().unwrap();
+                let vl: Vec<u8> = sample_queue.drain(0..4).collect();
+                let vr: Vec<u8> = sample_queue.drain(0..4).collect();
+                let fl = f32::from_le_bytes(vl.try_into().unwrap());
+                let fr = f32::from_le_bytes(vr.try_into().unwrap());
+                *element = (fl + fr) / 2.0;
             }
             if let Err(_) = tx.send(chunk) {
                 stopped = true;
@@ -60,23 +68,17 @@ fn capture_loop(
 }
 
 pub struct Capturer {
-    rx: mpsc::Receiver<Vec<u8>>,
-    waveformat: wasapi::WaveFormat,
+    rx: mpsc::Receiver<Vec<f32>>,
 }
 
 impl Capturer {
     pub fn new(device_id: &str) -> Self {
         let device_id = device_id.to_owned();
-        let device = get_device(&device_id).unwrap();
-        let waveformat = device.get_iaudioclient().unwrap().get_mixformat().unwrap();
-        let channels = waveformat.get_nchannels() as usize;
-        let (tx, rx) = mpsc::sync_channel(channels);
+        let (tx, rx) = mpsc::sync_channel(1);
         thread::spawn(move || {
-            let device = get_device(&device_id).unwrap();
-            capture_loop(device, tx, 4096).unwrap();
+            capture_loop(&device_id, tx, 4096).unwrap();
         });
-        println!("{:?}", waveformat);
-        Self { rx, waveformat }
+        Self { rx }
     }
 }
 
@@ -88,19 +90,13 @@ impl Analyzer {
     pub fn new(device_id: &str) -> Self {
         let (stop_sender, stop) = mpsc::channel();
         let capturer = Capturer::new(device_id);
-        let sample_rate = capturer.waveformat.get_samplespersec() as usize;
         thread::spawn(move || loop {
             if let Ok(()) = stop.try_recv() {
                 break;
             }
             if let Ok(v) = capturer.rx.try_recv() {
-                let samples: Vec<f32> = v
-                    .chunks_exact(4)
-                    .map(|chunk| f32::from_le_bytes(chunk.try_into().unwrap()))
-                    .collect();
-                let right: Vec<f32> = samples.chunks_exact(2).map(|chunk| chunk[0]).collect();
                 let mut detector = pitch_detection::detector::yin::YINDetector::new(4096, 0);
-                let pitch = detector.get_pitch(&right, sample_rate, 0.0, 0.0);
+                let pitch = detector.get_pitch(&v, 48_000, 0.1, 0.1);
                 if let Some(pitch) = pitch {
                     println!("{:?}", pitch.frequency);
                 } else {
