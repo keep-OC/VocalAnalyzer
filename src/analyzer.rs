@@ -27,6 +27,12 @@ fn get_device(device_id: &str) -> Res<wasapi::Device> {
     Ok(device)
 }
 
+pub fn get_default_device() -> Res<wasapi::Device> {
+    let direction = &wasapi::Direction::Capture;
+    let device = wasapi::get_default_device(direction)?;
+    Ok(device)
+}
+
 fn capture_loop(device_id: &str, tx: mpsc::SyncSender<Vec<f32>>, chunksize: usize) -> Res<()> {
     let device = get_device(device_id)?;
     let mut audio_client = device.get_iaudioclient()?;
