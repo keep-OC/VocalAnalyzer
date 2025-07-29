@@ -93,17 +93,34 @@ impl Capturer {
     }
 }
 
+struct History<T: Clone> {
+    values: VecDeque<T>,
+}
+impl<T: Clone> History<T> {
+    fn new(value: T, capacity: usize) -> Self {
+        let mut values = VecDeque::with_capacity(capacity);
+        values.resize(capacity, value);
+        Self { values }
+    }
+    fn push(&mut self, value: T) {
+        if self.values.len() == self.values.capacity() {
+            self.values.pop_front();
+        }
+        self.values.push_back(value);
+    }
+}
+
 pub struct Analyzer {
     stop_sender: mpsc::Sender<()>,
-    pub detected_piches: Arc<Mutex<VecDeque<f32>>>,
+    freq_history: Arc<Mutex<History<f32>>>,
 }
 
 impl Analyzer {
     pub fn new(device_id: &str) -> Self {
         let (stop_sender, stop) = mpsc::channel();
         let capturer = Capturer::new(device_id);
-        let detected_piches = Arc::new(Mutex::new(VecDeque::from([f32::NAN; 200])));
-        let clone = detected_piches.clone();
+        let freq_history = Arc::new(Mutex::new(History::new(f32::NAN, 200)));
+        let freq_history_clone = freq_history.clone();
         thread::spawn(move || {
             const BUFFER_SIZE: usize = CHUNK_SIZE * 4;
             let mut buffer = VecDeque::from([0.0; BUFFER_SIZE]);
@@ -113,19 +130,30 @@ impl Analyzer {
                 let chunk = capturer.rx.recv().unwrap();
                 buffer.drain(..CHUNK_SIZE);
                 buffer.extend(chunk);
-                let signal: Vec<f32> = buffer.iter().map(|&x| x).collect();
+                let signal: Vec<f32> = buffer.iter().cloned().collect();
                 let pitch = detector.get_pitch(&signal, SAMPLE_RATE, 0.1, 0.1);
                 let frequency = pitch.map(|p| p.frequency);
+
                 osc_sender.send_frequency(frequency.unwrap_or(0.0));
-                let mut lock = clone.lock().unwrap();
-                lock.pop_front();
-                lock.push_back(frequency.unwrap_or(f32::NAN));
+
+                let mut lock = freq_history_clone.lock().unwrap();
+                lock.push(frequency.unwrap_or(f32::NAN));
             }
         });
         Self {
             stop_sender,
-            detected_piches,
+            freq_history,
         }
+    }
+
+    pub fn freq_history_logscale(&self) -> Vec<f32> {
+        self.freq_history
+            .lock()
+            .unwrap()
+            .values
+            .iter()
+            .map(|f| 69.0 + 12.0 * (f / 440.0).log2())
+            .collect()
     }
 }
 

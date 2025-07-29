@@ -87,36 +87,30 @@ impl eframe::App for App {
                 }
             });
             if self.is_running() {
-                ui.label(format!(
-                    "Status: Runnning on {}...",
-                    self.device_names[&self.device_id]
-                ));
+                let device_name = &self.device_names[&self.device_id];
+                ui.label(format!("Status: Runnning on {}...", device_name));
             } else {
                 ui.label("Status: Ready");
             }
 
             if let Some(analyzer) = &self.analyzer {
-                ui.checkbox(
-                    &mut self.show_graph,
-                    "グラフを表示 (パフォーマンスに影響するかも)",
-                );
+                let label = "グラフを表示 (パフォーマンスに影響するかも)";
+                ui.checkbox(&mut self.show_graph, label);
                 if self.show_graph {
+                    let series: egui_plot::PlotPoints = analyzer
+                        .freq_history_logscale()
+                        .iter()
+                        .enumerate()
+                        .map(|(x, &y)| [x as f64, y as f64])
+                        .collect();
+                    let line = egui_plot::Line::new("pitch", series).color(egui::Color32::YELLOW);
                     egui_plot::Plot::new("plot")
                         .view_aspect(2.0)
                         .sense(egui::Sense::hover())
                         .show_x(false)
                         .show_y(false)
                         .show_axes([false, true])
-                        .show(ui, |plot_ui| {
-                            let lock = analyzer.detected_piches.lock().unwrap();
-                            let series: egui_plot::PlotPoints = lock
-                                .iter()
-                                .enumerate()
-                                .map(|(x, &y)| [x as f64, 69.0 + 12.0 * (y / 440.0).log2() as f64])
-                                .collect();
-                            let line = egui_plot::Line::new("pitch", series);
-                            plot_ui.line(line);
-                        });
+                        .show(ui, |plot_ui| plot_ui.line(line));
                     ctx.request_repaint();
                 }
             }
