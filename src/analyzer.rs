@@ -8,7 +8,8 @@ use crate::osc::OscSender;
 
 type Res<T> = Result<T, Box<dyn std::error::Error>>;
 
-const CHUNK_SIZE: usize = 2048;
+const SAMPLE_RATE: usize = 48_000;
+const CHUNK_SIZE: usize = 1024;
 
 pub fn get_devices() -> Res<Vec<wasapi::Device>> {
     let direction = &wasapi::Direction::Capture;
@@ -37,7 +38,7 @@ fn capture_loop(device_id: &str, tx: mpsc::SyncSender<Vec<f32>>, chunksize: usiz
     let device = get_device(device_id)?;
     let mut audio_client = device.get_iaudioclient()?;
     let sample_type = &wasapi::SampleType::Float;
-    let desired_format = wasapi::WaveFormat::new(32, 32, sample_type, 48000, 2, Some(1));
+    let desired_format = wasapi::WaveFormat::new(32, 32, sample_type, SAMPLE_RATE, 2, None);
     let blockalign = desired_format.get_blockalign();
     let (_def_time, min_time) = audio_client.get_device_period()?;
     let mode = wasapi::StreamMode::EventsShared {
@@ -63,7 +64,7 @@ fn capture_loop(device_id: &str, tx: mpsc::SyncSender<Vec<f32>>, chunksize: usiz
                 let fr = f32::from_le_bytes(vr.try_into().unwrap());
                 *element = (fl + fr) / 2.0;
             }
-            if let Err(_) = tx.send(chunk) {
+            if tx.send(chunk).is_err() {
                 stopped = true;
                 break;
             }
@@ -103,21 +104,23 @@ impl Analyzer {
         let capturer = Capturer::new(device_id);
         let detected_piches = Arc::new(Mutex::new(VecDeque::from([f32::NAN; 100])));
         let clone = detected_piches.clone();
-        let osc_sender = OscSender::new();
-        thread::spawn(move || loop {
-            if let Ok(()) = stop.try_recv() {
-                break;
-            }
-            if let Ok(v) = capturer.rx.try_recv() {
-                let mut detector = pitch_detection::detector::yin::YINDetector::new(CHUNK_SIZE, 0);
-                let pitch = detector.get_pitch(&v, 48_000, 0.1, 0.1);
+        thread::spawn(move || {
+            const BUFFER_SIZE: usize = CHUNK_SIZE * 16;
+            let mut buffer = VecDeque::from([0.0; BUFFER_SIZE]);
+            let mut detector = pitch_detection::detector::yin::YINDetector::new(BUFFER_SIZE, 0);
+            let osc_sender = OscSender::new();
+            while stop.try_recv().is_err() {
+                let chunk = capturer.rx.recv().unwrap();
+                buffer.drain(..CHUNK_SIZE);
+                buffer.extend(chunk);
+                let signal: Vec<f32> = buffer.iter().map(|&x| x).collect();
+                let pitch = detector.get_pitch(&signal, SAMPLE_RATE, 0.1, 0.1);
                 let frequency = pitch.map(|p| p.frequency);
                 osc_sender.send_frequency(frequency.unwrap_or(0.0));
                 let mut lock = clone.lock().unwrap();
                 lock.pop_front();
                 lock.push_back(frequency.unwrap_or(f32::NAN));
             }
-            std::thread::sleep(std::time::Duration::from_millis(100));
         });
         Self {
             stop_sender,
