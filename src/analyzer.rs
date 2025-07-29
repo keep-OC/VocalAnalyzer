@@ -102,10 +102,10 @@ impl Analyzer {
     pub fn new(device_id: &str) -> Self {
         let (stop_sender, stop) = mpsc::channel();
         let capturer = Capturer::new(device_id);
-        let detected_piches = Arc::new(Mutex::new(VecDeque::from([f32::NAN; 100])));
+        let detected_piches = Arc::new(Mutex::new(VecDeque::from([f32::NAN; 200])));
         let clone = detected_piches.clone();
         thread::spawn(move || {
-            const BUFFER_SIZE: usize = CHUNK_SIZE * 16;
+            const BUFFER_SIZE: usize = CHUNK_SIZE * 4;
             let mut buffer = VecDeque::from([0.0; BUFFER_SIZE]);
             let mut detector = pitch_detection::detector::yin::YINDetector::new(BUFFER_SIZE, 0);
             let osc_sender = OscSender::new();
