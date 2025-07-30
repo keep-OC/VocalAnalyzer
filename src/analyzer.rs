@@ -3,6 +3,7 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 
 use pitch_detection::detector::PitchDetector;
+use rustfft::num_complex::Complex;
 
 use crate::osc::OscSender;
 
@@ -10,6 +11,8 @@ type Res<T> = Result<T, Box<dyn std::error::Error>>;
 
 const SAMPLE_RATE: usize = 48_000;
 const CHUNK_SIZE: usize = 1024;
+const BUFFER_SIZE: usize = CHUNK_SIZE * 4;
+const FREQ_STEP: f32 = SAMPLE_RATE as f32 / BUFFER_SIZE as f32;
 
 pub fn get_devices() -> Res<Vec<wasapi::Device>> {
     let direction = &wasapi::Direction::Capture;
@@ -113,6 +116,7 @@ impl<T: Clone> History<T> {
 pub struct Analyzer {
     stop_sender: mpsc::Sender<()>,
     freq_history: Arc<Mutex<History<f32>>>,
+    spectrum: Arc<Mutex<Vec<f32>>>,
 }
 
 impl Analyzer {
@@ -121,10 +125,13 @@ impl Analyzer {
         let capturer = Capturer::new(device_id);
         let freq_history = Arc::new(Mutex::new(History::new(f32::NAN, 200)));
         let freq_history_clone = freq_history.clone();
+        let spectrum = Arc::new(Mutex::new(vec![0.0; BUFFER_SIZE / 2]));
+        let spectrum_clone = spectrum.clone();
         thread::spawn(move || {
-            const BUFFER_SIZE: usize = CHUNK_SIZE * 4;
             let mut buffer = VecDeque::from([0.0; BUFFER_SIZE]);
             let mut detector = pitch_detection::detector::yin::YINDetector::new(BUFFER_SIZE, 0);
+            let mut planner = rustfft::FftPlanner::new();
+            let fft = planner.plan_fft_forward(BUFFER_SIZE);
             let osc_sender = OscSender::new();
             while stop.try_recv().is_err() {
                 let chunk = capturer.rx.recv().unwrap();
@@ -134,15 +141,29 @@ impl Analyzer {
                 let pitch = detector.get_pitch(&signal, SAMPLE_RATE, 0.1, 0.1);
                 let frequency = pitch.map(|p| p.frequency);
 
+                let mut freqs: Vec<Complex<f32>> = signal.into_iter().map(From::from).collect();
+                fft.process(&mut freqs);
+                // let freq_step = SAMPLE_RATE as f32 / BUFFER_SIZE as f32 / 2.0;
+                // 音高がはっきりしないときはいったん 440 Hz の振幅を見ておく
+                // let freq_index = (frequency.unwrap_or(440.0) / freq_step) as usize;
+                // let g1 = freqs[freq_index];
+                {
+                    let mut lock = spectrum_clone.lock().unwrap();
+                    lock.iter_mut()
+                        .enumerate()
+                        .for_each(|(i, v)| *v = freqs[i].norm_sqr());
+                }
                 osc_sender.send_frequency(frequency.unwrap_or(0.0));
-
-                let mut lock = freq_history_clone.lock().unwrap();
-                lock.push(frequency.unwrap_or(f32::NAN));
+                {
+                    let mut lock = freq_history_clone.lock().unwrap();
+                    lock.push(frequency.unwrap_or(f32::NAN));
+                }
             }
         });
         Self {
             stop_sender,
             freq_history,
+            spectrum,
         }
     }
 
@@ -153,6 +174,19 @@ impl Analyzer {
             .values
             .iter()
             .map(|f| 69.0 + 12.0 * (f / 440.0).log2())
+            .collect()
+    }
+
+    pub fn spectrum(&self) -> Vec<(f32, f32)> {
+        self.spectrum
+            .lock()
+            .unwrap()
+            .iter()
+            .enumerate()
+            .map(|(i, &power)| {
+                let freq = FREQ_STEP * i as f32;
+                (freq, power)
+            })
             .collect()
     }
 }

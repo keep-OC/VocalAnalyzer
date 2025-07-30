@@ -2787,6 +2787,7 @@ dependencies = [
  "egui_plot",
  "pitch-detection",
  "rosc",
+ "rustfft",
  "wasapi",
 ]
 

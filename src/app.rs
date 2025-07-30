@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use crate::analyzer;
 use eframe::egui;
+use egui_plot::{Plot, PlotPoints};
 
 pub struct App {
     analyzer: Option<analyzer::Analyzer>,
@@ -9,6 +10,7 @@ pub struct App {
     device_names: HashMap<String, String>,
     device_id: String,
     show_graph: bool,
+    spec_bound_max: f32,
 }
 
 impl Default for App {
@@ -31,12 +33,13 @@ impl Default for App {
                 .collect(),
             device_id: default_device.get_id().unwrap(),
             show_graph: false,
+            spec_bound_max: 0.0,
         }
     }
 }
 
 impl App {
-    pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
+    pub fn new(cc: &eframe::CreationContext) -> Self {
         let mut fonts = egui::FontDefinitions::default();
         let meiryo = egui::FontData::from_static(include_bytes!("C:/Windows/Fonts/Meiryo.ttc"));
         fonts.font_data.insert("Meiryo".to_owned(), meiryo.into());
@@ -97,11 +100,11 @@ impl eframe::App for App {
                 let label = "グラフを表示 (パフォーマンスに影響するかも)";
                 ui.checkbox(&mut self.show_graph, label);
                 if self.show_graph {
-                    let series: egui_plot::PlotPoints = analyzer
+                    let series: PlotPoints = analyzer
                         .freq_history_logscale()
-                        .iter()
+                        .into_iter()
                         .enumerate()
-                        .map(|(x, &y)| [x as f64, y as f64])
+                        .map(|(x, y)| [x as f64, y as f64])
                         .collect();
                     let line = egui_plot::Line::new("pitch", series).color(egui::Color32::YELLOW);
                     egui_plot::Plot::new("plot")
@@ -111,6 +114,27 @@ impl eframe::App for App {
                         .show_y(false)
                         .show_axes([false, true])
                         .show(ui, |plot_ui| plot_ui.line(line));
+                    let freq_step = 48000.0 / 2.0 / 2048.0;
+                    let spectrum = analyzer.spectrum();
+                    let power_max = spectrum
+                        .iter()
+                        .map(|a| a.1)
+                        .max_by(|a, b| a.partial_cmp(b).unwrap())
+                        .unwrap();
+                    const COEFF: f32 = 1.0 / 4.0 / 60.0;
+                    self.spec_bound_max =
+                        self.spec_bound_max + (power_max - self.spec_bound_max) * COEFF;
+                    let bars: Vec<egui_plot::Bar> = spectrum
+                        .into_iter()
+                        .map(|(x, y)| egui_plot::Bar::new(x as f64, y as f64))
+                        .collect();
+                    let bar_chart = egui_plot::BarChart::new("pitch", bars)
+                        .color(egui::Color32::BLUE)
+                        .width(freq_step);
+                    Plot::new("spectrum")
+                        .view_aspect(2.0)
+                        .default_y_bounds(0.0, self.spec_bound_max as f64)
+                        .show(ui, |plot_ui| plot_ui.bar_chart(bar_chart));
                     ctx.request_repaint();
                 }
             }
