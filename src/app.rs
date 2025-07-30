@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::analyzer;
 use eframe::egui;
-use egui_plot::{Line, Plot, PlotPoints};
+use egui_plot::{Bar, BarChart, Line, Plot, PlotPoints};
 
 pub struct App {
     analyzer: Option<analyzer::Analyzer>,
@@ -113,7 +113,7 @@ impl eframe::App for App {
                         .into_iter()
                         .map(|(midinote, gain)| [history_len - gain as f64, midinote as f64])
                         .collect();
-                    let spec = Line::new("pitch", spec_points).color(egui::Color32::BLUE);
+                    let spec = Line::new("pitch", spec_points).color(egui::Color32::CYAN);
                     Plot::new("plot")
                         .view_aspect(2.0)
                         .show_x(false)
@@ -123,6 +123,18 @@ impl eframe::App for App {
                         .show(ui, |plot_ui| {
                             plot_ui.line(spec);
                             plot_ui.line(pitch);
+                        });
+                    let gains = analyzer.gains();
+                    let gains_bars: Vec<Bar> = gains
+                        .into_iter()
+                        .enumerate()
+                        .map(|(x, y)| Bar::new(x as f64, y as f64))
+                        .collect();
+                    let gains_bars = BarChart::new("gains", gains_bars);
+                    Plot::new("gains")
+                        .default_y_bounds(0.0, 1.0)
+                        .show(ui, |plot_ui| {
+                            plot_ui.bar_chart(gains_bars);
                         });
                     ctx.request_repaint();
                 }

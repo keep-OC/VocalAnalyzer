@@ -1,4 +1,5 @@
 use std::collections::VecDeque;
+use std::f32::consts::FRAC_PI_2;
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 
@@ -117,6 +118,7 @@ pub struct Analyzer {
     stop_sender: mpsc::Sender<()>,
     freq_history: Arc<Mutex<History<f32>>>,
     spectrum: Arc<Mutex<Vec<f32>>>,
+    gains: Arc<Mutex<Vec<f32>>>,
 }
 
 impl Analyzer {
@@ -127,6 +129,8 @@ impl Analyzer {
         let freq_history_clone = freq_history.clone();
         let spectrum = Arc::new(Mutex::new(vec![0.0; BUFFER_SIZE / 2]));
         let spectrum_clone = spectrum.clone();
+        let gains = Arc::new(Mutex::new(vec![0.0; 20]));
+        let gains_clone = gains.clone();
         thread::spawn(move || {
             let mut buffer = VecDeque::from([0.0; BUFFER_SIZE]);
             let mut detector = pitch_detection::detector::yin::YINDetector::new(BUFFER_SIZE, 0);
@@ -140,30 +144,38 @@ impl Analyzer {
                 let signal: Vec<f32> = buffer.iter().cloned().collect();
                 let pitch = detector.get_pitch(&signal, SAMPLE_RATE, 0.1, 0.1);
                 let frequency = pitch.map(|p| p.frequency);
-
-                let mut freqs: Vec<Complex<f32>> = signal.into_iter().map(From::from).collect();
-                fft.process(&mut freqs);
-                // let freq_step = SAMPLE_RATE as f32 / BUFFER_SIZE as f32 / 2.0;
-                // 音高がはっきりしないときはいったん 440 Hz の振幅を見ておく
-                // let freq_index = (frequency.unwrap_or(440.0) / freq_step) as usize;
-                // let g1 = freqs[freq_index];
-                {
-                    let mut lock = spectrum_clone.lock().unwrap();
-                    lock.iter_mut()
-                        .enumerate()
-                        .for_each(|(i, v)| *v = freqs[i].norm_sqr());
-                }
-                osc_sender.send_frequency(frequency.unwrap_or(0.0));
                 {
                     let mut lock = freq_history_clone.lock().unwrap();
                     lock.push(frequency.unwrap_or(f32::NAN));
                 }
+                let mut spec: Vec<Complex<f32>> = signal.into_iter().map(From::from).collect();
+                fft.process(&mut spec);
+                {
+                    let mut lock = spectrum_clone.lock().unwrap();
+                    lock.iter_mut()
+                        .enumerate()
+                        .for_each(|(i, v)| *v = spec[i].norm_sqr());
+                }
+                // 音高がはっきりしないときはいったん 440 Hz の振幅を見ておく
+                let f0 = frequency.unwrap_or(440.0);
+                let gains: Vec<f32> = (1..=20)
+                    .map(|k| {
+                        let freq = f0 * k as f32;
+                        gain_at_freq(&spec, &freq).clamp(0.0, 1.0)
+                    })
+                    .collect();
+                {
+                    let mut lock = gains_clone.lock().unwrap();
+                    lock.copy_from_slice(&gains);
+                }
+                osc_sender.send_frequency(frequency.unwrap_or(0.0), gains);
             }
         });
         Self {
             stop_sender,
             freq_history,
             spectrum,
+            gains,
         }
     }
 
@@ -191,6 +203,16 @@ impl Analyzer {
             })
             .collect()
     }
+
+    pub fn gains(&self) -> Vec<f32> {
+        self.gains.lock().unwrap().clone()
+    }
+}
+
+impl Drop for Analyzer {
+    fn drop(&mut self) {
+        self.stop_sender.send(()).unwrap();
+    }
 }
 
 fn freq_to_midi_note(freq: &f32) -> f32 {
@@ -200,8 +222,17 @@ fn freq_to_midi_note(freq: &f32) -> f32 {
     69.0 + 12.0 * (freq / 440.0).log2()
 }
 
-impl Drop for Analyzer {
-    fn drop(&mut self) {
-        self.stop_sender.send(()).unwrap();
+fn gain_at_freq(spec: &Vec<Complex<f32>>, freq: &f32) -> f32 {
+    let index = (freq / FREQ_STEP) as usize;
+    if index >= spec.len() {
+        return 0.0;
     }
+    let power = if index == spec.len() - 1 {
+        spec[index]
+    } else {
+        let coeff = (freq % FREQ_STEP) / FREQ_STEP;
+        let lerp = |a, b, t| a + (b - a) * t;
+        lerp(spec[index], spec[index + 1], coeff)
+    };
+    power.norm_sqr().atan() / FRAC_PI_2
 }
