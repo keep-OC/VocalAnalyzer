@@ -9,7 +9,7 @@ fn main() -> eframe::Result {
 
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
-            .with_inner_size([800.0, 900.0])
+            .with_inner_size([320.0, 260.0])
             .with_drag_and_drop(false),
         ..Default::default()
     };

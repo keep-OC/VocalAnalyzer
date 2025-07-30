@@ -123,7 +123,7 @@ impl Analyzer {
     pub fn new(device_id: &str) -> Self {
         let (stop_sender, stop) = mpsc::channel();
         let capturer = Capturer::new(device_id);
-        let freq_history = Arc::new(Mutex::new(History::new(f32::NAN, 200)));
+        let freq_history = Arc::new(Mutex::new(History::new(f32::NAN, 201)));
         let freq_history_clone = freq_history.clone();
         let spectrum = Arc::new(Mutex::new(vec![0.0; BUFFER_SIZE / 2]));
         let spectrum_clone = spectrum.clone();
@@ -167,13 +167,13 @@ impl Analyzer {
         }
     }
 
-    pub fn freq_history_logscale(&self) -> Vec<f32> {
+    pub fn freq_history_in_midi_note(&self) -> Vec<f32> {
         self.freq_history
             .lock()
             .unwrap()
             .values
             .iter()
-            .map(|f| 69.0 + 12.0 * (f / 440.0).log2())
+            .map(freq_to_midi_note)
             .collect()
     }
 
@@ -185,10 +185,19 @@ impl Analyzer {
             .enumerate()
             .map(|(i, &power)| {
                 let freq = FREQ_STEP * i as f32;
-                (freq, power)
+                let midi_note = freq_to_midi_note(&freq);
+                let gain = power.ln();
+                (midi_note, gain)
             })
             .collect()
     }
+}
+
+fn freq_to_midi_note(freq: &f32) -> f32 {
+    if *freq < 1.0 {
+        return 0.0;
+    }
+    69.0 + 12.0 * (freq / 440.0).log2()
 }
 
 impl Drop for Analyzer {

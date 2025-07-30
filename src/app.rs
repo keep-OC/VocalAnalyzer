@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::analyzer;
 use eframe::egui;
-use egui_plot::{Plot, PlotPoints};
+use egui_plot::{Line, Plot, PlotPoints};
 
 pub struct App {
     analyzer: Option<analyzer::Analyzer>,
@@ -10,7 +10,6 @@ pub struct App {
     device_names: HashMap<String, String>,
     device_id: String,
     show_graph: bool,
-    spec_bound_max: f32,
 }
 
 impl Default for App {
@@ -33,7 +32,6 @@ impl Default for App {
                 .collect(),
             device_id: default_device.get_id().unwrap(),
             show_graph: false,
-            spec_bound_max: 0.0,
         }
     }
 }
@@ -100,44 +98,45 @@ impl eframe::App for App {
                 let label = "グラフを表示 (パフォーマンスに影響するかも)";
                 ui.checkbox(&mut self.show_graph, label);
                 if self.show_graph {
-                    let series: PlotPoints = analyzer
-                        .freq_history_logscale()
+                    let freq_history = analyzer.freq_history_in_midi_note();
+                    let history_len = freq_history.len() as f64;
+                    let pitch_points: PlotPoints = freq_history
                         .into_iter()
                         .enumerate()
-                        .map(|(x, y)| [x as f64, y as f64])
+                        .map(|(i, midinote)| [i as f64, midinote as f64])
                         .collect();
-                    let line = egui_plot::Line::new("pitch", series).color(egui::Color32::YELLOW);
-                    egui_plot::Plot::new("plot")
-                        .view_aspect(2.0)
-                        .sense(egui::Sense::hover())
-                        .show_x(false)
-                        .show_y(false)
-                        .show_axes([false, true])
-                        .show(ui, |plot_ui| plot_ui.line(line));
-                    let freq_step = 48000.0 / 2.0 / 2048.0;
+                    let pitch = Line::new("pitch", pitch_points)
+                        .color(egui::Color32::YELLOW)
+                        .width(3.0);
                     let spectrum = analyzer.spectrum();
-                    let power_max = spectrum
-                        .iter()
-                        .map(|a| a.1)
-                        .max_by(|a, b| a.partial_cmp(b).unwrap())
-                        .unwrap();
-                    const COEFF: f32 = 1.0 / 4.0 / 60.0;
-                    self.spec_bound_max =
-                        self.spec_bound_max + (power_max - self.spec_bound_max) * COEFF;
-                    let bars: Vec<egui_plot::Bar> = spectrum
+                    let spec_points: PlotPoints = spectrum
                         .into_iter()
-                        .map(|(x, y)| egui_plot::Bar::new(x as f64, y as f64))
+                        .map(|(midinote, gain)| [history_len - gain as f64, midinote as f64])
                         .collect();
-                    let bar_chart = egui_plot::BarChart::new("pitch", bars)
-                        .color(egui::Color32::BLUE)
-                        .width(freq_step);
-                    Plot::new("spectrum")
+                    let spec = Line::new("pitch", spec_points).color(egui::Color32::BLUE);
+                    Plot::new("plot")
                         .view_aspect(2.0)
-                        .default_y_bounds(0.0, self.spec_bound_max as f64)
-                        .show(ui, |plot_ui| plot_ui.bar_chart(bar_chart));
+                        .show_x(false)
+                        .y_axis_formatter(|g, _r| midi_note_number_to_str(g.value))
+                        .show_axes([false, true])
+                        .default_x_bounds(0.0, history_len)
+                        .show(ui, |plot_ui| {
+                            plot_ui.line(spec);
+                            plot_ui.line(pitch);
+                        });
                     ctx.request_repaint();
                 }
             }
         });
     }
+}
+
+fn midi_note_number_to_str(n: f64) -> String {
+    if n < 0.0 || 150.0 < n {
+        return "".into();
+    }
+    let notes = [
+        "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
+    ];
+    format!("{}{}", notes[n as usize % 12], n as isize / 12 - 1)
 }
