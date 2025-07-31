@@ -1,5 +1,4 @@
 use std::collections::VecDeque;
-use std::f32::consts::FRAC_PI_2;
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 
@@ -148,7 +147,13 @@ impl Analyzer {
                     let mut lock = freq_history_clone.lock().unwrap();
                     lock.push(frequency.unwrap_or(f32::NAN));
                 }
-                let mut spec: Vec<Complex<f32>> = signal.into_iter().map(From::from).collect();
+                let window = apodize::hanning_iter(BUFFER_SIZE);
+                // let window = vec![1.0; BUFFER_SIZE];
+                let mut spec: Vec<Complex<f32>> = signal
+                    .into_iter()
+                    .zip(window)
+                    .map(|(a, b)| Complex::from(a * b as f32))
+                    .collect();
                 fft.process(&mut spec);
                 {
                     let mut lock = spectrum_clone.lock().unwrap();
@@ -224,15 +229,16 @@ fn freq_to_midi_note(freq: &f32) -> f32 {
 
 fn gain_at_freq(spec: &Vec<Complex<f32>>, freq: &f32) -> f32 {
     let index = (freq / FREQ_STEP) as usize;
-    if index >= spec.len() {
-        return 0.0;
-    }
-    let power = if index == spec.len() - 1 {
-        spec[index]
+    let coeff = (freq % FREQ_STEP) / FREQ_STEP;
+    let lerp = |a, b, t| a + (b - a) * t;
+
+    let power = if index >= spec.len() {
+        0.0
+    } else if index + 1 >= spec.len() {
+        spec[index].norm_sqr()
     } else {
-        let coeff = (freq % FREQ_STEP) / FREQ_STEP;
-        let lerp = |a, b, t| a + (b - a) * t;
-        lerp(spec[index], spec[index + 1], coeff)
+        let [a, b] = [0, 1].map(|i| spec[index + i].norm_sqr());
+        lerp(a, b, coeff)
     };
-    power.norm_sqr().atan() / FRAC_PI_2
+    power.ln() * 0.1
 }

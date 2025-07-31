@@ -115,7 +115,6 @@ impl eframe::App for App {
                         .collect();
                     let spec = Line::new("pitch", spec_points).color(egui::Color32::CYAN);
                     Plot::new("plot")
-                        .view_aspect(2.0)
                         .show_x(false)
                         .y_axis_formatter(|g, _r| midi_note_number_to_str(g.value))
                         .show_axes([false, true])
@@ -124,11 +123,21 @@ impl eframe::App for App {
                             plot_ui.line(spec);
                             plot_ui.line(pitch);
                         });
+                    ctx.request_repaint();
+                }
+            }
+        });
+        if self.show_graph {
+            let analyzer = self.analyzer.as_ref().unwrap();
+            egui::TopBottomPanel::bottom("bottom")
+                .default_height(100.0)
+                .resizable(true)
+                .show(ctx, |ui| {
                     let gains = analyzer.gains();
                     let gains_bars: Vec<Bar> = gains
                         .into_iter()
                         .enumerate()
-                        .map(|(x, y)| Bar::new(x as f64, y as f64))
+                        .map(|(x, y)| Bar::new((1 + x) as f64, y as f64))
                         .collect();
                     let gains_bars = BarChart::new("gains", gains_bars);
                     Plot::new("gains")
@@ -136,10 +145,8 @@ impl eframe::App for App {
                         .show(ui, |plot_ui| {
                             plot_ui.bar_chart(gains_bars);
                         });
-                    ctx.request_repaint();
-                }
-            }
-        });
+                });
+        }
     }
 }
 
