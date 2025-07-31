@@ -148,7 +148,6 @@ impl Analyzer {
                     lock.push(frequency.unwrap_or(f32::NAN));
                 }
                 let window = apodize::hanning_iter(BUFFER_SIZE);
-                // let window = vec![1.0; BUFFER_SIZE];
                 let mut spec: Vec<Complex<f32>> = signal
                     .into_iter()
                     .zip(window)
@@ -161,19 +160,26 @@ impl Analyzer {
                         .enumerate()
                         .for_each(|(i, v)| *v = spec[i].norm_sqr());
                 }
-                // 音高がはっきりしないときはいったん 440 Hz の振幅を見ておく
-                let f0 = frequency.unwrap_or(440.0);
                 let gains: Vec<f32> = (1..=20)
                     .map(|k| {
-                        let freq = f0 * k as f32;
-                        gain_at_freq(&spec, &freq).clamp(0.0, 1.0)
+                        frequency.map_or(0.0, |f0| {
+                            let freq = f0 * k as f32;
+                            gain_at_freq(&spec, &freq).clamp(0.0, 1.0)
+                        })
                     })
                     .collect();
                 {
                     let mut lock = gains_clone.lock().unwrap();
                     lock.copy_from_slice(&gains);
                 }
-                osc_sender.send_frequency(frequency.unwrap_or(0.0), gains);
+                let freq_normalized = frequency.map_or(-1.0, |freq| {
+                    const E2: f32 = 40.0;
+                    const G5: f32 = 79.0;
+                    let midinote = freq_to_midi_note(&freq);
+                    let normalize = |v, min, max| (v - min) / (max - min);
+                    normalize(midinote, E2, G5).clamp(0.0, 1.0)
+                });
+                osc_sender.send_frequency(freq_normalized, gains);
             }
         });
         Self {

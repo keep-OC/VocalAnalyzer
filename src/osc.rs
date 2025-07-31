@@ -11,10 +11,6 @@ pub struct OscSender {
     sock: UdpSocket,
 }
 
-fn log_scale(x: f32, min: f32, max: f32) -> f32 {
-    (x.ln() - min.ln()) / (max.ln() - min.ln())
-}
-
 fn new_float_message(addr: &str, v: f32) -> OscMessage {
     let mut message = OscMessage::from(addr);
     message.args.push(OscType::from(v));
@@ -39,14 +35,7 @@ impl OscSender {
         self.sock.send(&bytes).unwrap();
     }
     pub fn send_frequency(&self, freq: f32, gains: Vec<f32>) {
-        let e2_freq = 82.407;
-        let g5_freq = 783.991;
-        let log_freq = log_scale(freq, e2_freq, g5_freq).clamp(0.0, 1.0);
-        let v = if freq == 0.0 {
-            0
-        } else {
-            (log_freq * (1u32 << 14) as f32) as u32
-        };
+        let v = (freq * 0x3FFF as f32) as u32;
         let ft_l = (v & 0x7F) as f32 / 127.0;
         let ft_h = ((v >> 7) & 0x7F) as f32 / 127.0;
         let ft_l = new_float_message(PARAM_FT_L, ft_l);
