@@ -13,3 +13,10 @@ pitch-detection = "0.3.0"
 rosc = "0.11.4"
 rustfft = "6.4.0"
 wasapi = "0.19.0"
+
+[profile.release]
+lto = true
+opt-level = "s"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
