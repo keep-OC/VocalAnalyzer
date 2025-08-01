@@ -127,7 +127,7 @@ impl eframe::App for App {
                 }
             }
         });
-        if self.show_graph {
+        if self.show_graph && self.is_running() {
             let analyzer = self.analyzer.as_ref().unwrap();
             egui::TopBottomPanel::bottom("bottom")
                 .default_height(100.0)
@@ -145,6 +145,33 @@ impl eframe::App for App {
                         .show(ui, |plot_ui| {
                             plot_ui.bar_chart(gains_bars);
                         });
+                });
+            egui::TopBottomPanel::bottom("formant")
+                .default_height(100.0)
+                .resizable(true)
+                .show(ctx, |ui| {
+                    let formant_spec = analyzer.formant_spec();
+                    let formant_points: PlotPoints = formant_spec
+                        .into_iter()
+                        .enumerate()
+                        .map(|(x, y)| [48_000.0 / 2.0 / 512.0 * x as f64, y])
+                        .collect();
+                    let line = Line::new("formant", formant_points);
+                    let spectrum = analyzer.spectrum();
+                    let spec_points: PlotPoints = spectrum
+                        .into_iter()
+                        .map(|(midinote, gain)| {
+                            [
+                                440.0 * 2.0_f32.powf((midinote - 69.0) / 12.0) as f64,
+                                3.14 * 2.0 + gain as f64 / 2.0,
+                            ]
+                        })
+                        .collect();
+                    let spec = Line::new("pitch", spec_points).color(egui::Color32::CYAN);
+                    Plot::new("formant").show(ui, |plot_ui| {
+                        plot_ui.line(line);
+                        plot_ui.line(spec)
+                    })
                 });
         }
     }

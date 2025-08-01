@@ -1,9 +1,12 @@
+use core::f32;
 use std::collections::VecDeque;
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 
+use linear_predictive_coding::calc_lpc_by_burg;
 use pitch_detection::detector::PitchDetector;
 use rustfft::num_complex::Complex;
+use rustfft::num_traits::Inv;
 
 use crate::osc::OscSender;
 
@@ -118,6 +121,7 @@ pub struct Analyzer {
     freq_history: Arc<Mutex<History<f32>>>,
     spectrum: Arc<Mutex<Vec<f32>>>,
     gains: Arc<Mutex<Vec<f32>>>,
+    formant_spec: Arc<Mutex<Vec<f64>>>,
 }
 
 impl Analyzer {
@@ -130,6 +134,8 @@ impl Analyzer {
         let spectrum_clone = spectrum.clone();
         let gains = Arc::new(Mutex::new(vec![0.0; 20]));
         let gains_clone = gains.clone();
+        let formant_spec = Arc::new(Mutex::new(vec![0.0; 512]));
+        let formant_spec_clone = formant_spec.clone();
         thread::spawn(move || {
             let mut buffer = VecDeque::from([0.0; BUFFER_SIZE]);
             let mut detector = pitch_detection::detector::yin::YINDetector::new(BUFFER_SIZE, 0);
@@ -149,17 +155,17 @@ impl Analyzer {
                 }
                 let window = apodize::hanning_iter(BUFFER_SIZE);
                 let mut spec: Vec<Complex<f32>> = signal
-                    .into_iter()
+                    .iter()
                     .zip(window)
                     .map(|(a, b)| Complex::from(a * b as f32))
                     .collect();
                 fft.process(&mut spec);
-                {
-                    let mut lock = spectrum_clone.lock().unwrap();
-                    lock.iter_mut()
-                        .enumerate()
-                        .for_each(|(i, v)| *v = spec[i].norm_sqr());
-                }
+                spectrum_clone
+                    .lock()
+                    .unwrap()
+                    .iter_mut()
+                    .enumerate()
+                    .for_each(|(i, v)| *v = spec[i].norm_sqr());
                 let gains: Vec<f32> = (1..=20)
                     .map(|k| {
                         frequency.map_or(0.0, |f0| {
@@ -168,10 +174,7 @@ impl Analyzer {
                         })
                     })
                     .collect();
-                {
-                    let mut lock = gains_clone.lock().unwrap();
-                    lock.copy_from_slice(&gains);
-                }
+                gains_clone.lock().unwrap().copy_from_slice(&gains);
                 let freq_normalized = frequency.map_or(-1.0, |freq| {
                     const E2: f32 = 40.0;
                     const G5: f32 = 79.0;
@@ -179,6 +182,13 @@ impl Analyzer {
                     let normalize = |v, min, max| (v - min) / (max - min);
                     normalize(midinote, E2, G5).clamp(0.0, 1.0)
                 });
+                let array = ndarray::Array::from_iter(signal.iter().map(|&x| x as f64));
+                let filter_coeffs = calc_lpc_by_burg(array.view(), 24).unwrap().to_vec();
+                let formant_spec = calc_freq_responce(&filter_coeffs, 512);
+                formant_spec_clone
+                    .lock()
+                    .unwrap()
+                    .copy_from_slice(&formant_spec);
                 osc_sender.send_frequency(freq_normalized, gains);
             }
         });
@@ -187,6 +197,7 @@ impl Analyzer {
             freq_history,
             spectrum,
             gains,
+            formant_spec,
         }
     }
 
@@ -218,6 +229,10 @@ impl Analyzer {
     pub fn gains(&self) -> Vec<f32> {
         self.gains.lock().unwrap().clone()
     }
+
+    pub fn formant_spec(&self) -> Vec<f64> {
+        self.formant_spec.lock().unwrap().clone()
+    }
 }
 
 impl Drop for Analyzer {
@@ -247,4 +262,22 @@ fn gain_at_freq(spec: &Vec<Complex<f32>>, freq: &f32) -> f32 {
         lerp(a, b, coeff)
     };
     power.ln() * 0.1
+}
+
+fn calc_freq_responce(coeffs: &Vec<f64>, size: usize) -> Vec<f64> {
+    let one = Complex::new(1.0, 0.0);
+    let a = |z: Complex<f64>| {
+        one + coeffs
+            .iter()
+            .enumerate()
+            .map(|(i, a)| a * z.powi(-(1 + i as i32)))
+            .sum::<Complex<f64>>()
+    };
+    (0..size)
+        .map(|i| {
+            let omega = i as f64 * std::f64::consts::PI / size as f64;
+            let z = Complex::from_polar(1.0, omega);
+            a(z).norm().inv().ln()
+        })
+        .collect()
 }
