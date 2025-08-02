@@ -93,7 +93,10 @@ impl eframe::App for App {
                     let spectrum = analyzer.spectrum();
                     let spec_points: PlotPoints = spectrum
                         .into_iter()
-                        .map(|(midinote, gain)| [history_len - gain as f64, midinote as f64])
+                        .map(|(midinote, gain)| {
+                            let gain = gain as f64 * 2.0 + 3.0;
+                            [history_len - 1.0 - gain, midinote as f64]
+                        })
                         .collect();
                     let spec = Line::new("pitch", spec_points).color(egui::Color32::CYAN);
                     Plot::new("plot")
@@ -144,7 +147,7 @@ impl eframe::App for App {
                         .into_iter()
                         .map(|(midinote, gain)| {
                             let freq = 440.0 * 2.0_f32.powf((midinote - 69.0) / 12.0) as f64;
-                            let gain = (gain / 2.0).clamp(-60.0, 100.0) as f64;
+                            let gain = gain.clamp(-60.0, 100.0) as f64;
                             [freq, gain + 6.02]
                         })
                         .collect();
