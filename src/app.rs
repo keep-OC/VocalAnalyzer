@@ -1,36 +1,18 @@
-use std::collections::HashMap;
-
-use crate::{analyzer, sound_device};
+use crate::{analyzer, sound_device::DeviceList};
 use eframe::egui;
 use egui_plot::{Bar, BarChart, Line, Plot, PlotPoints};
 
 pub struct App {
+    device_list: DeviceList,
     analyzer: Option<analyzer::Analyzer>,
-    device_ids: Vec<String>,
-    device_names: HashMap<String, String>,
-    device_id: String,
     show_graph: bool,
 }
 
 impl Default for App {
     fn default() -> Self {
-        let devices = sound_device::get_devices().unwrap();
-        let default_device = sound_device::get_default_device().unwrap();
         Self {
+            device_list: DeviceList::new(),
             analyzer: None,
-            device_ids: devices
-                .iter()
-                .map(|device| device.get_id().unwrap())
-                .collect(),
-            device_names: devices
-                .iter()
-                .map(|device| {
-                    let device_id = device.get_id().unwrap();
-                    let device_name = device.get_friendlyname().unwrap();
-                    (device_id, device_name)
-                })
-                .collect(),
-            device_id: default_device.get_id().unwrap(),
             show_graph: false,
         }
     }
@@ -55,9 +37,11 @@ impl App {
     }
 
     fn start(&mut self) {
-        let analyzer = analyzer::Analyzer::new(&self.device_id);
+        let capturer = self.device_list.device().capturer(analyzer::CHUNK_SIZE);
+        let analyzer = analyzer::Analyzer::new(capturer);
         self.analyzer = analyzer.into();
     }
+
     fn stop(&mut self) {
         self.analyzer.take();
     }
@@ -68,12 +52,10 @@ impl eframe::App for App {
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.add_enabled_ui(!self.is_running(), |ui| {
                 egui::ComboBox::from_label("")
-                    .selected_text(&self.device_names[&self.device_id])
+                    .selected_text(&self.device_list.device().name)
                     .show_ui(ui, |ui| {
-                        for device_id in &self.device_ids {
-                            let device_id = device_id.to_owned();
-                            let device_name = &self.device_names[&device_id];
-                            ui.selectable_value(&mut self.device_id, device_id, device_name);
+                        for (i, device) in self.device_list.devices.iter().enumerate() {
+                            ui.selectable_value(&mut self.device_list.index, i, &device.name);
                         }
                     })
             });
@@ -88,7 +70,7 @@ impl eframe::App for App {
                 }
             });
             if self.is_running() {
-                let device_name = &self.device_names[&self.device_id];
+                let device_name = &self.device_list.device().name;
                 ui.label(format!("Status: Runnning on {}...", device_name));
             } else {
                 ui.label("Status: Ready");

@@ -1,8 +1,10 @@
 use std::{collections::VecDeque, sync::mpsc, thread};
 
+use crate::analyzer;
+
 type Res<T> = Result<T, Box<dyn std::error::Error>>;
 
-pub fn get_devices() -> Res<Vec<wasapi::Device>> {
+fn get_wasapi_devices() -> Res<Vec<wasapi::Device>> {
     let direction = &wasapi::Direction::Capture;
     let devices = wasapi::DeviceCollection::new(direction)?
         .into_iter()
@@ -11,27 +13,73 @@ pub fn get_devices() -> Res<Vec<wasapi::Device>> {
     Ok(devices)
 }
 
-fn get_device(device_id: &str) -> Res<wasapi::Device> {
-    let device = get_devices()?
+fn get_wasapi_device(device_id: &str) -> Res<wasapi::Device> {
+    let device = get_wasapi_devices()?
         .into_iter()
         .find(|device| device.get_id().unwrap() == device_id)
         .unwrap();
     Ok(device)
 }
 
-pub fn get_default_device() -> Res<wasapi::Device> {
+fn get_default_device_id() -> Res<String> {
     let direction = &wasapi::Direction::Capture;
     let device = wasapi::get_default_device(direction)?;
-    Ok(device)
+    let device_id = device.get_id()?;
+    Ok(device_id)
+}
+
+#[derive(Debug, Clone)]
+pub struct Device {
+    pub id: String,
+    pub name: String,
+}
+
+impl From<&wasapi::Device> for Device {
+    fn from(device: &wasapi::Device) -> Self {
+        Self {
+            id: device.get_id().unwrap(),
+            name: device.get_friendlyname().unwrap(),
+        }
+    }
+}
+
+impl Device {
+    pub fn capturer(&self, chunksize: usize) -> Capturer {
+        Capturer::new(self.clone(), chunksize)
+    }
+}
+
+pub struct DeviceList {
+    pub devices: Vec<Device>,
+    pub index: usize,
+}
+
+impl DeviceList {
+    pub fn new() -> Self {
+        let devices: Vec<Device> = get_wasapi_devices()
+            .unwrap()
+            .iter()
+            .map(Into::into)
+            .collect();
+        let default_device_id = get_default_device_id().unwrap();
+        let index = devices
+            .iter()
+            .position(|device| device.id == default_device_id)
+            .unwrap();
+        Self { devices, index }
+    }
+    pub fn device(&self) -> &Device {
+        &self.devices[self.index]
+    }
 }
 
 fn capture_loop(
-    device_id: &str,
+    device: Device,
     tx: mpsc::SyncSender<Vec<f32>>,
     samplerate: usize,
     chunksize: usize,
 ) -> Res<()> {
-    let device = get_device(device_id)?;
+    let device = get_wasapi_device(&device.id)?;
     let mut audio_client = device.get_iaudioclient()?;
     let sample_type = &wasapi::SampleType::Float;
     let desired_format = wasapi::WaveFormat::new(32, 32, sample_type, samplerate, 2, None);
@@ -79,11 +127,12 @@ pub struct Capturer {
 }
 
 impl Capturer {
-    pub fn new(device_id: &str, samplerate: usize, chunksize: usize) -> Self {
-        let device_id = device_id.to_owned();
+    fn new(device: Device, chunksize: usize) -> Self {
         let (tx, rx) = mpsc::sync_channel(1);
         thread::spawn(move || {
-            capture_loop(&device_id, tx, samplerate, chunksize).unwrap();
+            // TODO: get sample rate from device
+            let samplerate = analyzer::SAMPLE_RATE;
+            capture_loop(device, tx, samplerate, chunksize).unwrap();
         });
         Self { rx }
     }

@@ -9,10 +9,10 @@ use rustfft::num_complex::Complex;
 use rustfft::num_traits::Inv;
 
 use crate::osc::OscSender;
-use crate::sound_device::Capturer;
+use crate::sound_device;
 
-const SAMPLE_RATE: usize = 48_000;
-const CHUNK_SIZE: usize = 1024;
+pub const SAMPLE_RATE: usize = 48_000;
+pub const CHUNK_SIZE: usize = 1024;
 const BUFFER_SIZE: usize = CHUNK_SIZE * 4;
 const FREQ_STEP: f32 = SAMPLE_RATE as f32 / BUFFER_SIZE as f32;
 
@@ -43,9 +43,8 @@ pub struct Analyzer {
 }
 
 impl Analyzer {
-    pub fn new(device_id: &str) -> Self {
+    pub fn new(capturer: sound_device::Capturer) -> Self {
         let (stop_sender, stop) = mpsc::channel();
-        let capturer = Capturer::new(device_id, SAMPLE_RATE, CHUNK_SIZE);
         let freq_history = Arc::new(Mutex::new(History::new(f32::NAN, 201)));
         let freq_history_clone = freq_history.clone();
         let spectrum = Arc::new(Mutex::new(vec![0.0; BUFFER_SIZE / 2]));
