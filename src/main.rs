@@ -3,6 +3,7 @@
 mod analyzer;
 mod app;
 mod osc;
+mod sound_device;
 
 fn main() -> eframe::Result {
     wasapi::initialize_mta().unwrap();

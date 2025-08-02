@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::analyzer;
+use crate::{analyzer, sound_device};
 use eframe::egui;
 use egui_plot::{Bar, BarChart, Line, Plot, PlotPoints};
 
@@ -14,8 +14,8 @@ pub struct App {
 
 impl Default for App {
     fn default() -> Self {
-        let devices = analyzer::get_devices().unwrap();
-        let default_device = analyzer::get_default_device().unwrap();
+        let devices = sound_device::get_devices().unwrap();
+        let default_device = sound_device::get_default_device().unwrap();
         Self {
             analyzer: None,
             device_ids: devices
@@ -154,17 +154,16 @@ impl eframe::App for App {
                     let formant_points: PlotPoints = formant_spec
                         .into_iter()
                         .enumerate()
-                        .map(|(x, y)| [48_000.0 / 2.0 / 512.0 * x as f64, y])
+                        .map(|(x, y)| [48_000.0 / 2.0 / 512.0 * x as f64, y.clamp(-60.0, 100.0)])
                         .collect();
                     let line = Line::new("formant", formant_points);
                     let spectrum = analyzer.spectrum();
                     let spec_points: PlotPoints = spectrum
                         .into_iter()
                         .map(|(midinote, gain)| {
-                            [
-                                440.0 * 2.0_f32.powf((midinote - 69.0) / 12.0) as f64,
-                                3.14 * 2.0 + gain as f64 / 2.0,
-                            ]
+                            let freq = 440.0 * 2.0_f32.powf((midinote - 69.0) / 12.0) as f64;
+                            let gain = (gain / 2.0).clamp(-60.0, 100.0) as f64;
+                            [freq, gain + 6.02]
                         })
                         .collect();
                     let spec = Line::new("pitch", spec_points).color(egui::Color32::CYAN);
