@@ -2293,6 +2293,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "rpoly"
+version = "0.2.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "43c62cbcdb76d1642bfe2eb0a5fa16734b01a5e25442e72ec00d9748f1d2f70c"
+
+[[package]]
 name = "rustc-hash"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2845,6 +2851,7 @@ dependencies = [
  "ndarray",
  "pitch-detection",
  "rosc",
+ "rpoly",
  "rustfft",
  "wasapi",
 ]

@@ -152,10 +152,16 @@ impl eframe::App for App {
                         })
                         .collect();
                     let spec = Line::new("pitch", spec_points).color(egui::Color32::CYAN);
+                    let peaks = analyzer.formant_peak();
                     Plot::new("formant").show(ui, |plot_ui| {
                         plot_ui.line(line);
-                        plot_ui.line(spec)
-                    })
+                        plot_ui.line(spec);
+                        peaks.iter().for_each(|&f| {
+                            let points: PlotPoints = vec![[f, -20.0], [f, 15.0]].into();
+                            let line = Line::new("peak", points);
+                            plot_ui.line(line);
+                        });
+                    });
                 });
         }
     }

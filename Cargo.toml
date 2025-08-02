@@ -11,6 +11,7 @@ linear-predictive-coding = "0.4.0"
 ndarray = "0.16.1"
 pitch-detection = "0.3.0"
 rosc = "0.11.4"
+rpoly = "0.2.9"
 rustfft = "6.4.0"
 wasapi = "0.19.0"
 

@@ -1,5 +1,6 @@
 use core::f32;
 use std::collections::VecDeque;
+use std::f64::consts::PI;
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 
@@ -15,6 +16,7 @@ use crate::sound_device;
 pub const SAMPLE_RATE: usize = 48_000;
 pub const CHUNK_SIZE: usize = 1024;
 const BUFFER_SIZE: usize = CHUNK_SIZE * 4;
+const NYQUIST: f64 = SAMPLE_RATE as f64 / 2.0;
 const FREQ_STEP: f32 = SAMPLE_RATE as f32 / BUFFER_SIZE as f32;
 
 struct Feature {
@@ -22,6 +24,7 @@ struct Feature {
     spectrum: Vec<f32>,
     gains: Vec<f32>,
     formant_spec: Vec<f64>,
+    formant_peak: Vec<f64>,
 }
 
 struct FeatureAnalyzer {
@@ -46,12 +49,14 @@ impl FeatureAnalyzer {
                 })
             })
             .collect();
-        let formant_spec = self.analyze_formant(samples);
+        let (formant_spec, formant_peak) = self.analyze_formant(samples);
+
         Feature {
             freq,
             spectrum,
             gains,
             formant_spec,
+            formant_peak,
         }
     }
 
@@ -74,10 +79,19 @@ impl FeatureAnalyzer {
             .collect()
     }
 
-    fn analyze_formant(&self, samples: &[f32]) -> Vec<f64> {
+    fn analyze_formant(&self, samples: &[f32]) -> (Vec<f64>, Vec<f64>) {
         let array = ndarray::Array::from_iter(samples.iter().map(|&x| x as f64));
         let filter_coeffs = calc_lpc_by_burg(array.view(), 24).unwrap().to_vec();
-        calc_freq_responce(&filter_coeffs, 512)
+        let spec = calc_freq_responce(&filter_coeffs, 512);
+        let roots: Vec<Complex<f64>> = calc_poly_roots(&filter_coeffs);
+        let mut freqs: Vec<f64> = roots
+            .into_iter()
+            .filter(|r| r.norm() > 0.8)
+            .map(|r| r.arg() * NYQUIST / PI)
+            .filter(|&freq| 10.0 < freq && freq < NYQUIST - 10.0)
+            .collect();
+        freqs.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        (spec, freqs)
     }
 }
 
@@ -86,6 +100,7 @@ struct AnalyzedFeatures {
     spectrum: Vec<f32>,
     gains: Vec<f32>,
     formant_spec: Vec<f64>,
+    formant_peak: Vec<f64>,
 }
 
 impl AnalyzedFeatures {
@@ -95,6 +110,7 @@ impl AnalyzedFeatures {
             spectrum: vec![0.0; BUFFER_SIZE / 2],
             gains: vec![0.0; 20],
             formant_spec: vec![0.0; 512],
+            formant_peak: vec![],
         }
     }
     fn push(&mut self, f: &Feature) {
@@ -103,6 +119,8 @@ impl AnalyzedFeatures {
         self.spectrum.copy_from_slice(&f.spectrum);
         self.gains.copy_from_slice(&f.gains);
         self.formant_spec.copy_from_slice(&f.formant_spec);
+        self.formant_peak.resize(f.formant_peak.len(), 0.0);
+        self.formant_peak.copy_from_slice(&f.formant_peak);
     }
 }
 
@@ -167,6 +185,10 @@ impl Analyzer {
     pub fn formant_spec(&self) -> Vec<f64> {
         self.data.lock().unwrap().formant_spec.clone()
     }
+
+    pub fn formant_peak(&self) -> Vec<f64> {
+        self.data.lock().unwrap().formant_peak.clone()
+    }
 }
 
 impl Drop for Analyzer {
@@ -220,5 +242,18 @@ fn calc_freq_responce(coeffs: &Vec<f64>, size: usize) -> Vec<f64> {
             let z = Complex::from_polar(1.0, omega);
             a(z).norm().inv().ln()
         })
+        .collect()
+}
+
+fn calc_poly_roots(coeffs: &Vec<f64>) -> Vec<Complex<f64>> {
+    let mut poly = [1.0; 25];
+    poly.iter_mut()
+        .skip(1)
+        .zip(coeffs)
+        .for_each(|(p, c)| *p = *c);
+    let roots = rpoly::rpoly(&poly).unwrap();
+    roots
+        .into_iter()
+        .map(|r| Complex { re: r.re, im: r.im })
         .collect()
 }
