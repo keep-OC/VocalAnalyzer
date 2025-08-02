@@ -146,7 +146,13 @@ impl Analyzer {
                 let feature = feature_analyzer.analyze(&samples);
                 data_clone.lock().unwrap().push(&feature);
                 let freq_normalized = feature.freq.map_or(-1.0, normalize_freq);
-                osc_sender.send_frequency(freq_normalized, feature.gains);
+                let formants = feature
+                    .formant_peak
+                    .iter()
+                    .take(4)
+                    .map(|&f| f.clamp(0.0, 8192.0) as f32 / 0x3FFF as f32)
+                    .collect();
+                osc_sender.send_param(freq_normalized, feature.gains, formants);
             }
         });
         Self { stop_sender, data }
@@ -251,8 +257,12 @@ fn calc_poly_roots(coeffs: &Vec<f64>) -> Vec<Complex<f64>> {
         .skip(1)
         .zip(coeffs)
         .for_each(|(p, c)| *p = *c);
-    let roots = rpoly::rpoly(&poly).unwrap();
+    let roots = rpoly::rpoly(&poly);
+    if roots.is_err() {
+        return vec![];
+    }
     roots
+        .unwrap()
         .into_iter()
         .map(|r| Complex { re: r.re, im: r.im })
         .collect()
