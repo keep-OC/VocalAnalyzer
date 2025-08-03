@@ -5,7 +5,7 @@ use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 
 use linear_predictive_coding::calc_lpc_by_burg;
-use pitch_detection::detector::yin::YINDetector;
+use pitch_detection::detector;
 use pitch_detection::detector::PitchDetector;
 use rustfft::num_complex::Complex;
 use rustfft::num_traits::Inv;
@@ -29,12 +29,12 @@ struct Feature {
 }
 
 struct FeatureAnalyzer {
-    detector: YINDetector<f32>,
+    detector: detector::mcleod::McLeodDetector<f32>,
     fft: Arc<dyn rustfft::Fft<f32>>,
 }
 impl FeatureAnalyzer {
     fn new() -> Self {
-        let detector = pitch_detection::detector::yin::YINDetector::new(BUFFER_SIZE, 0);
+        let detector = detector::mcleod::McLeodDetector::new(BUFFER_SIZE, BUFFER_SIZE / 2);
         let mut planner = rustfft::FftPlanner::new();
         let fft = planner.plan_fft_forward(BUFFER_SIZE);
         Self { detector, fft }
@@ -62,7 +62,7 @@ impl FeatureAnalyzer {
     }
 
     fn analyze_freq(&mut self, samples: &[f32]) -> Option<f32> {
-        let pitch = self.detector.get_pitch(samples, SAMPLE_RATE, 0.01, 0.0);
+        let pitch = self.detector.get_pitch(samples, SAMPLE_RATE, 1.0, 0.7);
         pitch.map(|p| p.frequency)
     }
 
