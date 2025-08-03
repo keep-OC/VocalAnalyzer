@@ -1,3 +1,5 @@
+use std::io::Read;
+
 use crate::{
     analyzer::{Analyzer, CHUNK_SIZE},
     sound_device::DeviceList,
@@ -24,7 +26,10 @@ impl Default for App {
 impl App {
     pub fn new(cc: &eframe::CreationContext) -> Self {
         let mut fonts = egui::FontDefinitions::default();
-        let meiryo = egui::FontData::from_static(include_bytes!("C:/Windows/Fonts/Meiryo.ttc"));
+        let mut fontfile = std::fs::File::open("C:/Windows/Fonts/Meiryo.ttc").unwrap();
+        let mut fontdata = Vec::new();
+        fontfile.read_to_end(&mut fontdata).unwrap();
+        let meiryo = egui::FontData::from_owned(fontdata);
         fonts.font_data.insert("Meiryo".to_owned(), meiryo.into());
         fonts
             .families
