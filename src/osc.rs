@@ -26,8 +26,8 @@ fn split_float(v: f32) -> (f32, f32) {
 
 fn new_split_float_message(addr_base: &str, v: f32) -> (OscMessage, OscMessage) {
     let (l, h) = split_float(v);
-    let addr_l = format!("{}_L", addr_base);
-    let addr_h = format!("{}_H", addr_base);
+    let addr_l = format!("{addr_base}_L");
+    let addr_h = format!("{addr_base}_H");
     let l = new_float_message(&addr_l, l);
     let h = new_float_message(&addr_h, h);
     (l, h)
@@ -44,7 +44,7 @@ impl OscSender {
     fn send_bundle(&self, vs: Vec<OscMessage>) {
         let bundle = OscBundle {
             timetag: SystemTime::now().try_into().unwrap(),
-            content: vs.into_iter().map(|v| OscPacket::Message(v)).collect(),
+            content: vs.into_iter().map(OscPacket::Message).collect(),
         };
         let packet = OscPacket::Bundle(bundle);
         let bytes = encoder::encode(&packet).unwrap();

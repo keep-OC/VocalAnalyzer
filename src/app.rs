@@ -189,7 +189,7 @@ fn update_bottom(analyzer: &Analyzer, ctx: &egui::Context) {
 }
 
 fn midi_note_number_to_str(n: f64) -> String {
-    if n < 0.0 || 150.0 < n {
+    if !(0.0..=150.0).contains(&n) {
         return "".into();
     }
     let notes = [

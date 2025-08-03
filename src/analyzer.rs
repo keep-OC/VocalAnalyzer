@@ -287,5 +287,5 @@ fn process_hpf(s: &mut Vec<f32>, cutoff_freq: f32) {
 fn process_window<I: Iterator<Item = f64>>(s: &mut Vec<f32>, window: I) {
     s.iter_mut()
         .zip(window)
-        .for_each(|(x, w)| *x = *x * w as f32);
+        .for_each(|(x, w)| *x *= w as f32);
 }
