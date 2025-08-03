@@ -15,7 +15,7 @@ fn main() -> eframe::Result {
         ..Default::default()
     };
     eframe::run_native(
-        "Vocal Analyzer",
+        "Voice Analyzer",
         options,
         Box::new(|cc| Ok(Box::new(app::App::new(cc)))),
     )
