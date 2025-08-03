@@ -1,0 +1,11 @@
+on:
+  push:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: cargo fmt --check
+      - run: cargo clippy
+      - run: cargo test
