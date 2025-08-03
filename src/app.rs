@@ -139,7 +139,7 @@ impl eframe::App for App {
                     let formant_points: PlotPoints = formant_spec
                         .into_iter()
                         .enumerate()
-                        .map(|(x, y)| [48_000.0 / 2.0 / 512.0 * x as f64, y.clamp(-60.0, 100.0)])
+                        .map(|(x, y)| [48_000.0 / 4.0 / 512.0 * x as f64, y.clamp(-60.0, 100.0)])
                         .collect();
                     let line = Line::new("formant", formant_points);
                     let spectrum = analyzer.spectrum();

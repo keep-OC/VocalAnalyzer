@@ -18,7 +18,7 @@ pub const CHUNK_SIZE: usize = 1024;
 const BUFFER_SIZE: usize = CHUNK_SIZE * 4;
 const NYQUIST: f64 = SAMPLE_RATE as f64 / 2.0;
 const FREQ_STEP: f32 = SAMPLE_RATE as f32 / BUFFER_SIZE as f32;
-const LPC_DEPTH: usize = 50;
+const LPC_DEPTH: usize = 20;
 
 struct Feature {
     freq: Option<f32>,
@@ -81,17 +81,23 @@ impl FeatureAnalyzer {
     }
 
     fn analyze_formant(&self, samples: &[f32]) -> (Vec<f64>, Vec<f64>) {
-        let mut buffer = Vec::from(samples);
+        const CHUNK: usize = 2;
+        const RESAMPLED_BUFFER_SIZE: usize = BUFFER_SIZE / CHUNK;
+        const RESAMPLED_NYQUIST: f64 = NYQUIST / CHUNK as f64;
+        let mut buffer = Vec::from(samples)
+            .chunks(CHUNK)
+            .map(|chunk| chunk.iter().sum())
+            .collect();
         process_hpf(&mut buffer, 50.0);
-        process_window(&mut buffer, apodize::hanning_iter(BUFFER_SIZE));
+        process_window(&mut buffer, apodize::hanning_iter(RESAMPLED_BUFFER_SIZE));
         let array = ndarray::Array::from_iter(buffer.iter().map(|&x| x as f64));
         let filter_coeffs = calc_lpc_by_burg(array.view(), LPC_DEPTH).unwrap().to_vec();
         let spec = calc_freq_responce(&filter_coeffs, 512);
         let roots: Vec<Complex<f64>> = calc_poly_roots(&filter_coeffs);
         let mut freqs: Vec<f64> = roots
             .into_iter()
-            .map(|r| r.arg() * NYQUIST / PI)
-            .filter(|&freq| 10.0 < freq && freq < NYQUIST - 10.0)
+            .map(|r| r.arg() * RESAMPLED_NYQUIST / PI)
+            .filter(|&freq| 100.0 < freq && freq < RESAMPLED_NYQUIST - 100.0)
             .collect();
         freqs.sort_by(|a, b| a.partial_cmp(b).unwrap());
         (spec, freqs)
