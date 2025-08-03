@@ -135,11 +135,12 @@ impl eframe::App for App {
                 .default_height(100.0)
                 .resizable(true)
                 .show(ctx, |ui| {
+                    let (min, max) = (-30.0, 20.0);
                     let formant_spec = analyzer.formant_spec();
                     let formant_points: PlotPoints = formant_spec
                         .into_iter()
                         .enumerate()
-                        .map(|(x, y)| [48_000.0 / 4.0 / 512.0 * x as f64, y.clamp(-60.0, 100.0)])
+                        .map(|(x, y)| [48_000.0 / 4.0 / 512.0 * x as f64, y.clamp(min, max)])
                         .collect();
                     let line = Line::new("formant", formant_points);
                     let spectrum = analyzer.spectrum();
@@ -147,7 +148,7 @@ impl eframe::App for App {
                         .into_iter()
                         .map(|(midinote, gain)| {
                             let freq = 440.0 * 2.0_f32.powf((midinote - 69.0) / 12.0) as f64;
-                            let gain = (gain + 6.02).clamp(-60.0, 100.0) as f64;
+                            let gain = (gain as f64 + 6.02).clamp(min, max);
                             [freq, gain]
                         })
                         .collect();
@@ -163,7 +164,7 @@ impl eframe::App for App {
                         plot_ui.line(line);
                         plot_ui.line(spec);
                         peaks.iter().take(4).zip(colors).for_each(|(&f, c)| {
-                            let points: PlotPoints = vec![[f, -60.0], [f, 100.0]].into();
+                            let points: PlotPoints = vec![[f, min], [f, max]].into();
                             let line = Line::new("peak", points).color(c);
                             plot_ui.line(line);
                         });
