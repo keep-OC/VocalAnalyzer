@@ -1,30 +1,13 @@
 on:
-  release:
-    types: [published]
-
-env:
-  PYTHON_VERSION: 3.13.x
-  MAIN: VoiceAnalyzer
+  push:
 
 jobs:
   build:
     runs-on: windows-latest
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{env.PYTHON_VERSION}}
-      - run: pip install -r requirements.txt
-      - run: pip install pyinstaller
-      - run: pyinstaller --onefile --noconsole ${{env.MAIN}}.py
+      - run: cargo build --release
       - uses: actions/upload-artifact@v4
         with:
-          name: dist
-          path: dist/${{env.MAIN}}.exe
-      - uses: softprops/action-gh-release@v2
-        with:
-          files: dist/${{env.MAIN}}.exe
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: voice_analyzer.exe
+          path: target/release/voice_analyzer.exe
