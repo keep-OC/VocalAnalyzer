@@ -147,8 +147,8 @@ impl eframe::App for App {
                         .into_iter()
                         .map(|(midinote, gain)| {
                             let freq = 440.0 * 2.0_f32.powf((midinote - 69.0) / 12.0) as f64;
-                            let gain = gain.clamp(-60.0, 100.0) as f64;
-                            [freq, gain + 6.02]
+                            let gain = (gain + 6.02).clamp(-60.0, 100.0) as f64;
+                            [freq, gain]
                         })
                         .collect();
                     let spec = Line::new("pitch", spec_points).color(egui::Color32::CYAN);
@@ -163,7 +163,7 @@ impl eframe::App for App {
                         plot_ui.line(line);
                         plot_ui.line(spec);
                         peaks.iter().take(4).zip(colors).for_each(|(&f, c)| {
-                            let points: PlotPoints = vec![[f, -20.0], [f, 15.0]].into();
+                            let points: PlotPoints = vec![[f, -60.0], [f, 100.0]].into();
                             let line = Line::new("peak", points).color(c);
                             plot_ui.line(line);
                         });
