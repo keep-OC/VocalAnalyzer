@@ -18,6 +18,7 @@ pub const CHUNK_SIZE: usize = 1024;
 const BUFFER_SIZE: usize = CHUNK_SIZE * 4;
 const NYQUIST: f64 = SAMPLE_RATE as f64 / 2.0;
 const FREQ_STEP: f32 = SAMPLE_RATE as f32 / BUFFER_SIZE as f32;
+const LPC_DEPTH: usize = 27;
 
 struct Feature {
     freq: Option<f32>,
@@ -61,7 +62,7 @@ impl FeatureAnalyzer {
     }
 
     fn analyze_freq(&mut self, samples: &[f32]) -> Option<f32> {
-        let pitch = self.detector.get_pitch(samples, SAMPLE_RATE, 0.1, 0.1);
+        let pitch = self.detector.get_pitch(samples, SAMPLE_RATE, 0.01, 0.0);
         pitch.map(|p| p.frequency)
     }
 
@@ -81,7 +82,7 @@ impl FeatureAnalyzer {
 
     fn analyze_formant(&self, samples: &[f32]) -> (Vec<f64>, Vec<f64>) {
         let array = ndarray::Array::from_iter(samples.iter().map(|&x| x as f64));
-        let filter_coeffs = calc_lpc_by_burg(array.view(), 24).unwrap().to_vec();
+        let filter_coeffs = calc_lpc_by_burg(array.view(), LPC_DEPTH).unwrap().to_vec();
         let spec = calc_freq_responce(&filter_coeffs, 512);
         let roots: Vec<Complex<f64>> = calc_poly_roots(&filter_coeffs);
         let mut freqs: Vec<f64> = roots
@@ -252,7 +253,7 @@ fn calc_freq_responce(coeffs: &Vec<f64>, size: usize) -> Vec<f64> {
 }
 
 fn calc_poly_roots(coeffs: &Vec<f64>) -> Vec<Complex<f64>> {
-    let mut poly = [1.0; 25];
+    let mut poly = [1.0; LPC_DEPTH + 1];
     poly.iter_mut()
         .skip(1)
         .zip(coeffs)
