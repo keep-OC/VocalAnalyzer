@@ -84,7 +84,7 @@ impl FeatureAnalyzer {
         const CHUNK: usize = 2;
         const RESAMPLED_BUFFER_SIZE: usize = BUFFER_SIZE / CHUNK;
         const RESAMPLED_NYQUIST: f64 = NYQUIST / CHUNK as f64;
-        let mut buffer = Vec::from(samples)
+        let mut buffer: Vec<f32> = Vec::from(samples)
             .chunks(CHUNK)
             .map(|chunk| chunk.iter().sum())
             .collect();
@@ -227,7 +227,7 @@ fn normalize_freq(freq: f32) -> f32 {
     normalize(midinote, E2, G5).clamp(0.0, 1.0)
 }
 
-fn gain_at_freq(spec: &Vec<f32>, freq: &f32) -> f32 {
+fn gain_at_freq(spec: &[f32], freq: &f32) -> f32 {
     let index = (freq / FREQ_STEP) as usize;
     let coeff = (freq % FREQ_STEP) / FREQ_STEP;
     let lerp = |a, b, t| a + (b - a) * t;
@@ -242,7 +242,7 @@ fn gain_at_freq(spec: &Vec<f32>, freq: &f32) -> f32 {
     power.ln() * 0.2
 }
 
-fn calc_freq_responce(coeffs: &Vec<f64>, size: usize) -> Vec<f64> {
+fn calc_freq_responce(coeffs: &[f64], size: usize) -> Vec<f64> {
     let one = Complex::new(1.0, 0.0);
     let a = |z: Complex<f64>| {
         one + coeffs
@@ -277,15 +277,13 @@ fn calc_poly_roots(coeffs: &Vec<f64>) -> Vec<Complex<f64>> {
         .collect()
 }
 
-fn process_hpf(s: &mut Vec<f32>, cutoff_freq: f32) {
+fn process_hpf(s: &mut [f32], cutoff_freq: f32) {
     let alpha = (-2.0 * PI as f32 * cutoff_freq / SAMPLE_RATE as f32).exp();
     for i in (2..s.len()).rev() {
         s[i] -= alpha * s[i - 1];
     }
 }
 
-fn process_window<I: Iterator<Item = f64>>(s: &mut Vec<f32>, window: I) {
-    s.iter_mut()
-        .zip(window)
-        .for_each(|(x, w)| *x *= w as f32);
+fn process_window<I: Iterator<Item = f64>>(s: &mut [f32], window: I) {
+    s.iter_mut().zip(window).for_each(|(x, w)| *x *= w as f32);
 }
