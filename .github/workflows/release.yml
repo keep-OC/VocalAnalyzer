@@ -3,8 +3,7 @@ on:
     types: [published]
 
 env:
-  PYTHON_VERSION: 3.13.x
-  MAIN: VoiceAnalyzer
+  MAIN: voice_analyzer
 
 jobs:
   build:
@@ -13,18 +12,17 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{env.PYTHON_VERSION}}
-      - run: pip install -r requirements.txt
-      - run: pip install pyinstaller
-      - run: pyinstaller --onefile --noconsole ${{env.MAIN}}.py
+
+      - run: cargo build --release
+
+      # release に上げれば十分だけど一応デバッグ用に action summary にも上げておく
       - uses: actions/upload-artifact@v4
         with:
-          name: dist
-          path: dist/${{env.MAIN}}.exe
+          name: release
+          path: target/release/${{env.MAIN}}.exe
+
       - uses: softprops/action-gh-release@v2
         with:
-          files: dist/${{env.MAIN}}.exe
+          files: target/release/${{env.MAIN}}.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
