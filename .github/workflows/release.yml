@@ -4,9 +4,10 @@ on:
 
 env:
   MAIN: voice_analyzer
+  UNITYPACKAGE_NAME: VoiceAnalyzer
 
 jobs:
-  build:
+  build-client:
     runs-on: windows-latest
     permissions:
       contents: write
@@ -19,10 +20,36 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: release
-          path: target/release/${{env.MAIN}}.exe
+          path: target/release/${{ env.MAIN }}.exe
 
       - uses: softprops/action-gh-release@v2
         with:
-          files: target/release/${{env.MAIN}}.exe
+          files: target/release/${{ env.MAIN }}.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-unitypackage:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: find Assets/ -name \*.meta > metaList
+
+      - uses: pCYSl5EDgo/create-unitypackage@v1.2.3
+        with:
+          package-path: ${{ env.UNITYPACKAGE_NAME }}.unitypackage
+          include-files: metaList
+
+      # release に上げれば十分だけど一応デバッグ用に action summary にも上げておく
+      - uses: actions/upload-artifact@v4
+        with:
+          name: unitypackage
+          path: ${{ env.UNITYPACKAGE_NAME }}.unitypackage
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.UNITYPACKAGE_NAME }}.unitypackage
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
