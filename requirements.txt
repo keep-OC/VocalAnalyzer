@@ -1,5 +1,0 @@
-numpy==2.2.6
-sounddevice==0.5.2
-python-osc==1.9.3
-librosa==0.11.0
-praat-parselmouth==0.4.6
