@@ -37,6 +37,7 @@ impl App {
             .or_default()
             .insert(0, "Meiryo".to_owned());
         cc.egui_ctx.set_fonts(fonts);
+        cc.egui_ctx.set_theme(egui::Theme::Dark);
         Default::default()
     }
 
