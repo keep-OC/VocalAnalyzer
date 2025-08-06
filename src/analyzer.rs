@@ -11,18 +11,15 @@ use rustfft::num_complex::Complex;
 use rustfft::num_traits::Inv;
 
 use crate::osc::OscSender;
-use crate::sound_device;
+use crate::sound_device::{self, Sound};
 
-pub const SAMPLE_RATE: usize = 48_000;
 pub const CHUNK_SIZE: usize = 1024;
 const BUFFER_SIZE: usize = CHUNK_SIZE * 4;
-const NYQUIST: f64 = SAMPLE_RATE as f64 / 2.0;
-const FREQ_STEP: f32 = SAMPLE_RATE as f32 / BUFFER_SIZE as f32;
 const LPC_DEPTH: usize = 20;
 
 struct Feature {
     freq: Option<f32>,
-    spectrum: Vec<f32>,
+    spectrum: Vec<(f32, f32)>,
     gains: Vec<f32>,
     formant_spec: Vec<f64>,
     formant_peak: Vec<f64>,
@@ -39,7 +36,7 @@ impl FeatureAnalyzer {
         let fft = planner.plan_fft_forward(BUFFER_SIZE);
         Self { detector, fft }
     }
-    fn analyze(&mut self, samples: &[f32]) -> Feature {
+    fn analyze(&mut self, samples: &Sound) -> Feature {
         let freq = self.analyze_freq(samples);
         let spectrum = self.analyze_spectrum(samples);
         let gains: Vec<f32> = (1..=20)
@@ -61,34 +58,39 @@ impl FeatureAnalyzer {
         }
     }
 
-    fn analyze_freq(&mut self, samples: &[f32]) -> Option<f32> {
-        let pitch = self.detector.get_pitch(samples, SAMPLE_RATE, 1.0, 0.7);
+    fn analyze_freq(&mut self, s: &Sound) -> Option<f32> {
+        let pitch = self.detector.get_pitch(&s.samples, s.samplerate, 1.0, 0.7);
         pitch.map(|p| p.frequency)
     }
 
-    fn analyze_spectrum(&self, samples: &[f32]) -> Vec<f32> {
+    fn analyze_spectrum(&self, s: &Sound) -> Vec<(f32, f32)> {
         let window = apodize::hanning_iter(BUFFER_SIZE);
-        let mut spec: Vec<Complex<f32>> = samples
+        let mut spec: Vec<Complex<f32>> = s
+            .samples
             .iter()
             .zip(window)
             .map(|(a, b)| Complex::from(a * b as f32))
             .collect();
         self.fft.process(&mut spec);
+        let freq_step = s.samplerate as f32 / BUFFER_SIZE as f32;
         spec.into_iter()
             .take(BUFFER_SIZE / 2)
-            .map(|c| c.norm())
+            .enumerate()
+            .map(|(i, c)| (i as f32 * freq_step, c.norm()))
             .collect()
     }
 
-    fn analyze_formant(&self, samples: &[f32]) -> (Vec<f64>, Vec<f64>) {
+    fn analyze_formant(&self, s: &Sound) -> (Vec<f64>, Vec<f64>) {
         const CHUNK: usize = 2;
         const RESAMPLED_BUFFER_SIZE: usize = BUFFER_SIZE / CHUNK;
-        const RESAMPLED_NYQUIST: f64 = NYQUIST / CHUNK as f64;
-        let mut buffer: Vec<f32> = Vec::from(samples)
+        let nyquist = s.samplerate / 2;
+        let resampled_nyquist = nyquist as f64 / CHUNK as f64;
+        let mut buffer: Vec<f32> = s
+            .samples
             .chunks(CHUNK)
             .map(|chunk| chunk.iter().sum())
             .collect();
-        process_hpf(&mut buffer, 50.0);
+        process_hpf(&mut buffer, s.samplerate, 50.0);
         process_window(&mut buffer, apodize::hanning_iter(RESAMPLED_BUFFER_SIZE));
         let array = ndarray::Array::from_iter(buffer.iter().map(|&x| x as f64));
         let filter_coeffs = calc_lpc_by_burg(array.view(), LPC_DEPTH).unwrap().to_vec();
@@ -96,8 +98,8 @@ impl FeatureAnalyzer {
         let roots: Vec<Complex<f64>> = calc_poly_roots(&filter_coeffs);
         let mut freqs: Vec<f64> = roots
             .into_iter()
-            .map(|r| r.arg() * RESAMPLED_NYQUIST / PI)
-            .filter(|&freq| 100.0 < freq && freq < RESAMPLED_NYQUIST - 100.0)
+            .map(|r| r.arg() * resampled_nyquist / PI)
+            .filter(|&freq| 100.0 < freq && freq < resampled_nyquist - 100.0)
             .collect();
         freqs.sort_by(|a, b| a.partial_cmp(b).unwrap());
         (spec, freqs)
@@ -106,7 +108,7 @@ impl FeatureAnalyzer {
 
 struct AnalyzedFeatures {
     freq_history: VecDeque<f32>,
-    spectrum: Vec<f32>,
+    spectrum: Vec<(f32, f32)>,
     gains: Vec<f32>,
     formant_spec: Vec<f64>,
     formant_peak: Vec<f64>,
@@ -116,7 +118,7 @@ impl AnalyzedFeatures {
     fn new() -> Self {
         Self {
             freq_history: VecDeque::from([f32::NAN; 201]),
-            spectrum: vec![0.0; BUFFER_SIZE / 2],
+            spectrum: vec![(0.0, 0.0); BUFFER_SIZE / 2],
             gains: vec![0.0; 20],
             formant_spec: vec![0.0; 512],
             formant_peak: vec![],
@@ -148,11 +150,14 @@ impl Analyzer {
             let osc_sender = OscSender::new();
             let mut feature_analyzer = FeatureAnalyzer::new();
             while stop.try_recv().is_err() {
-                let chunk = capturer.rx.recv().unwrap();
+                let sound = capturer.rx.recv().unwrap();
                 buffer.drain(..CHUNK_SIZE);
-                buffer.extend(chunk);
-                let samples: Vec<f32> = buffer.iter().cloned().collect();
-                let feature = feature_analyzer.analyze(&samples);
+                buffer.extend(sound.samples);
+                let sound = Sound {
+                    samplerate: sound.samplerate,
+                    samples: buffer.iter().cloned().collect(),
+                };
+                let feature = feature_analyzer.analyze(&sound);
                 data_clone.lock().unwrap().push(&feature);
                 let freq_normalized = feature.freq.map_or(-1.0, normalize_freq);
                 let formants = feature
@@ -183,10 +188,8 @@ impl Analyzer {
             .unwrap()
             .spectrum
             .iter()
-            .enumerate()
-            .map(|(i, &power)| {
-                let freq = FREQ_STEP * i as f32;
-                let midi_note = freq_to_midi_note(&freq);
+            .map(|(freq, power)| {
+                let midi_note = freq_to_midi_note(freq);
                 let gain = 2.0 * power.ln();
                 (midi_note, gain)
             })
@@ -227,18 +230,22 @@ fn normalize_freq(freq: f32) -> f32 {
     normalize(midinote, E2, G5).clamp(0.0, 1.0)
 }
 
-fn gain_at_freq(spec: &[f32], freq: &f32) -> f32 {
-    let index = (freq / FREQ_STEP) as usize;
-    let coeff = (freq % FREQ_STEP) / FREQ_STEP;
-    let lerp = |a, b, t| a + (b - a) * t;
-
-    let power = if index >= spec.len() {
-        0.0
-    } else if index + 1 >= spec.len() {
-        spec[index]
+fn gain_at_freq(spec: &[(f32, f32)], freq: &f32) -> f32 {
+    let index = spec.iter().position(|(f, _)| *f >= *freq);
+    if index.is_none() {
+        return 0.0;
+    }
+    let index = index.unwrap();
+    let (upper_freq, upper_gain) = spec[index];
+    let (lower_freq, lower_gain) = if index >= 1 {
+        spec[index - 1]
     } else {
-        lerp(spec[index], spec[index + 1], coeff)
+        (0.0, 0.0)
     };
+    let freq_step = upper_freq - lower_freq;
+    let coeff = (freq % freq_step) / freq_step;
+    let lerp = |a, b, t| a + (b - a) * t;
+    let power = lerp(lower_gain, upper_gain, coeff);
     power.ln() * 0.2
 }
 
@@ -277,8 +284,8 @@ fn calc_poly_roots(coeffs: &Vec<f64>) -> Vec<Complex<f64>> {
         .collect()
 }
 
-fn process_hpf(s: &mut [f32], cutoff_freq: f32) {
-    let alpha = (-2.0 * PI as f32 * cutoff_freq / SAMPLE_RATE as f32).exp();
+fn process_hpf(s: &mut [f32], samplerate: usize, cutoff_freq: f32) {
+    let alpha = (-2.0 * PI as f32 * cutoff_freq / samplerate as f32).exp();
     for i in (2..s.len()).rev() {
         s[i] -= alpha * s[i - 1];
     }

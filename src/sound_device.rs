@@ -1,7 +1,5 @@
 use std::{collections::VecDeque, sync::mpsc, thread};
 
-use crate::analyzer;
-
 type Res<T> = Result<T, Box<dyn std::error::Error>>;
 
 fn get_wasapi_devices() -> Res<Vec<wasapi::Device>> {
@@ -32,13 +30,18 @@ fn get_default_device_id() -> Res<String> {
 pub struct Device {
     pub id: String,
     pub name: String,
+    pub samplerate: usize,
 }
 
 impl From<&wasapi::Device> for Device {
     fn from(device: &wasapi::Device) -> Self {
+        let audio_client = device.get_iaudioclient().unwrap();
+        let mixformat = audio_client.get_mixformat().unwrap();
+        let samplerate = mixformat.get_samplespersec() as usize;
         Self {
             id: device.get_id().unwrap(),
             name: device.get_friendlyname().unwrap(),
+            samplerate,
         }
     }
 }
@@ -73,9 +76,14 @@ impl DeviceList {
     }
 }
 
+pub struct Sound {
+    pub samples: Vec<f32>,
+    pub samplerate: usize,
+}
+
 fn capture_loop(
     device: Device,
-    tx: mpsc::SyncSender<Vec<f32>>,
+    tx: mpsc::SyncSender<Sound>,
     samplerate: usize,
     chunksize: usize,
 ) -> Res<()> {
@@ -108,7 +116,11 @@ fn capture_loop(
                 let fr = f32::from_le_bytes(vr.try_into().unwrap());
                 *element = (fl + fr) / 2.0;
             }
-            if tx.send(chunk).is_err() {
+            let sound = Sound {
+                samples: chunk,
+                samplerate,
+            };
+            if tx.send(sound).is_err() {
                 stopped = true;
                 break;
             }
@@ -123,15 +135,14 @@ fn capture_loop(
 }
 
 pub struct Capturer {
-    pub rx: mpsc::Receiver<Vec<f32>>,
+    pub rx: mpsc::Receiver<Sound>,
 }
 
 impl Capturer {
     fn new(device: Device, chunksize: usize) -> Self {
         let (tx, rx) = mpsc::sync_channel(1);
         thread::spawn(move || {
-            // TODO: get sample rate from device
-            let samplerate = analyzer::SAMPLE_RATE;
+            let samplerate = device.samplerate;
             capture_loop(device, tx, samplerate, chunksize).unwrap();
         });
         Self { rx }
