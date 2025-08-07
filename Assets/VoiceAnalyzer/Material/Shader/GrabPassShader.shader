@@ -84,18 +84,39 @@ Shader "Unlit/GrabPassShader"
             half4 frag(v2f i) : SV_Target
             {
                 float MAX_HZ = 8192.0;
-                // sample the texture
-                // fixed4 col = tex2D(_GrabPassTexture, i.uv);
-                // apply fog
-                // UNITY_APPLY_FOG(i.fogCoord, col);
-                // return col;
-
-                // return half4(1, 0, 0, 0);
 
                 float2 src = i.uv + float2(_PixelX, 0.0);
                 half4 ret = (src.x <= 1.0)
                     ? tex2D(_GrabPassTexture, src)
                     : half4(0, 0, 0, 1);
+
+                // === 罫線描画 ===
+                float lineWidth = _PixelX * 1.0;
+                float lineIntensity = 0.0;
+
+                // 1kHzごとの太線
+                [unroll]
+                for (int k = 1; k <= 8; ++k)
+                {
+                    float freq = 1000.0 * k;
+                    float yLine = freq / MAX_HZ;
+                    float dist = abs(i.uv.y - yLine);
+                    lineIntensity = max(lineIntensity, smoothstep(lineWidth, 0.0, dist));
+                }
+
+                // 500Hzごとの薄線（1kHz除外）
+                [unroll]
+                for (int k = 1; k <= 16; ++k)
+                {
+                    float freq = 500.0 * k;
+                    if (freq % 1000 == 0) continue; // 重複回避
+                    float yLine = freq / MAX_HZ;
+                    float dist = abs(i.uv.y - yLine);
+                    lineIntensity = max(lineIntensity, smoothstep(lineWidth, 0.0, dist) * 0.3);
+                }
+
+                float3 gridColor = float3(1.0, 1.0, 1.0) * lineIntensity;
+                ret.rgb = max(ret.rgb, gridColor);
 
                 if (i.uv.x > 1.0 - _PixelX * 1.5)
                 {
@@ -156,29 +177,6 @@ Shader "Unlit/GrabPassShader"
 
                     float3 col = Heatmap(saturate(amp));
                     ret = half4(col, 1.0);
-
-                    // ==== 罫線表示（Y方向） ====
-                    float lineWidth = _PixelX * 1.0;
-                    float lineIntensity = 0.0;
-
-                    for (int k = 1; k <= 8; ++k) {
-                        float freq = 1000.0 * k;
-                        float yLine = freq / MAX_HZ;
-                        float dist = abs(i.uv.y - yLine);
-                        lineIntensity = max(lineIntensity, smoothstep(lineWidth, 0.0, dist));
-                    }
-
-                    for (int k = 1; k <= 16; ++k) {
-                        float freq = 500.0 * k;
-                        if (freq % 1000 == 0) continue; // 重複回避
-                        float yLine = freq / MAX_HZ;
-                        float dist = abs(i.uv.y - yLine);
-                        lineIntensity = max(lineIntensity, smoothstep(lineWidth, 0.0, dist) * 0.3);
-                    }
-
-                    float3 lineColor = float3(1.0, 1.0, 1.0);
-                    ret.rgb = lerp(ret.rgb, lineColor, lineIntensity);
-
                 }
 
                 return ret;
