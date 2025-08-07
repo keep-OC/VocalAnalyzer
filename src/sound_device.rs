@@ -1,7 +1,5 @@
 use std::{collections::VecDeque, sync::mpsc, thread};
 
-use crate::analyzer;
-
 type Res<T> = Result<T, Box<dyn std::error::Error>>;
 
 fn get_wasapi_devices() -> Res<Vec<wasapi::Device>> {
@@ -32,13 +30,18 @@ fn get_default_device_id() -> Res<String> {
 pub struct Device {
     pub id: String,
     pub name: String,
+    pub samplerate: usize,
 }
 
 impl From<&wasapi::Device> for Device {
     fn from(device: &wasapi::Device) -> Self {
+        let audio_client = device.get_iaudioclient().unwrap();
+        let mixformat = audio_client.get_mixformat().unwrap();
+        let samplerate = mixformat.get_samplespersec() as usize;
         Self {
             id: device.get_id().unwrap(),
             name: device.get_friendlyname().unwrap(),
+            samplerate,
         }
     }
 }
@@ -73,20 +76,25 @@ impl DeviceList {
     }
 }
 
+pub struct Sound {
+    pub samples: Vec<f32>,
+    pub samplerate: usize,
+}
+
 fn capture_loop(
     device: Device,
-    tx: mpsc::SyncSender<Vec<f32>>,
+    tx: mpsc::SyncSender<Sound>,
     samplerate: usize,
     chunksize: usize,
 ) -> Res<()> {
     let device = get_wasapi_device(&device.id)?;
     let mut audio_client = device.get_iaudioclient()?;
     let sample_type = &wasapi::SampleType::Float;
-    let desired_format = wasapi::WaveFormat::new(32, 32, sample_type, samplerate, 2, None);
+    let desired_format = wasapi::WaveFormat::new(32, 32, sample_type, samplerate, 1, None);
     let blockalign = desired_format.get_blockalign();
     let (_def_time, min_time) = audio_client.get_device_period()?;
     let mode = wasapi::StreamMode::EventsShared {
-        autoconvert: false,
+        autoconvert: true,
         buffer_duration_hns: min_time,
     };
     let direction = &wasapi::Direction::Capture;
@@ -102,13 +110,14 @@ fn capture_loop(
         while sample_queue.len() > (blockalign as usize * chunksize) {
             let mut chunk = vec![0f32; chunksize];
             for element in chunk.iter_mut() {
-                let vl: Vec<u8> = sample_queue.drain(0..4).collect();
-                let vr: Vec<u8> = sample_queue.drain(0..4).collect();
-                let fl = f32::from_le_bytes(vl.try_into().unwrap());
-                let fr = f32::from_le_bytes(vr.try_into().unwrap());
-                *element = (fl + fr) / 2.0;
+                let v: Vec<u8> = sample_queue.drain(0..4).collect();
+                *element = f32::from_le_bytes(v.try_into().unwrap());
             }
-            if tx.send(chunk).is_err() {
+            let sound = Sound {
+                samples: chunk,
+                samplerate,
+            };
+            if tx.send(sound).is_err() {
                 stopped = true;
                 break;
             }
@@ -123,15 +132,14 @@ fn capture_loop(
 }
 
 pub struct Capturer {
-    pub rx: mpsc::Receiver<Vec<f32>>,
+    pub rx: mpsc::Receiver<Sound>,
 }
 
 impl Capturer {
     fn new(device: Device, chunksize: usize) -> Self {
         let (tx, rx) = mpsc::sync_channel(1);
         thread::spawn(move || {
-            // TODO: get sample rate from device
-            let samplerate = analyzer::SAMPLE_RATE;
+            let samplerate = device.samplerate;
             capture_loop(device, tx, samplerate, chunksize).unwrap();
         });
         Self { rx }
