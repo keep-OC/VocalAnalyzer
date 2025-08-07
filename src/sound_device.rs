@@ -90,11 +90,11 @@ fn capture_loop(
     let device = get_wasapi_device(&device.id)?;
     let mut audio_client = device.get_iaudioclient()?;
     let sample_type = &wasapi::SampleType::Float;
-    let desired_format = wasapi::WaveFormat::new(32, 32, sample_type, samplerate, 2, None);
+    let desired_format = wasapi::WaveFormat::new(32, 32, sample_type, samplerate, 1, None);
     let blockalign = desired_format.get_blockalign();
     let (_def_time, min_time) = audio_client.get_device_period()?;
     let mode = wasapi::StreamMode::EventsShared {
-        autoconvert: false,
+        autoconvert: true,
         buffer_duration_hns: min_time,
     };
     let direction = &wasapi::Direction::Capture;
@@ -110,11 +110,8 @@ fn capture_loop(
         while sample_queue.len() > (blockalign as usize * chunksize) {
             let mut chunk = vec![0f32; chunksize];
             for element in chunk.iter_mut() {
-                let vl: Vec<u8> = sample_queue.drain(0..4).collect();
-                let vr: Vec<u8> = sample_queue.drain(0..4).collect();
-                let fl = f32::from_le_bytes(vl.try_into().unwrap());
-                let fr = f32::from_le_bytes(vr.try_into().unwrap());
-                *element = (fl + fr) / 2.0;
+                let v: Vec<u8> = sample_queue.drain(0..4).collect();
+                *element = f32::from_le_bytes(v.try_into().unwrap());
             }
             let sound = Sound {
                 samples: chunk,
