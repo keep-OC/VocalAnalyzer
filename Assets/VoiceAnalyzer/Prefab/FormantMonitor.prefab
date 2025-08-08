@@ -476,7 +476,7 @@ Transform:
   m_GameObject: {fileID: 4173024967020993284}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: -0.4}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -513,15 +513,15 @@ Camera:
     y: 0
     width: 1
     height: 1
-  near clip plane: 0.3
-  far clip plane: 0.5
+  near clip plane: 0
+  far clip plane: 0.01
   field of view: 60
   orthographic: 1
-  orthographic size: 0.5
+  orthographic size: 0.0005
   m_Depth: 0
   m_CullingMask:
     serializedVersion: 2
-    m_Bits: 4294967295
+    m_Bits: 1536
   m_RenderingPath: -1
   m_TargetTexture: {fileID: 8400000, guid: c3eefef6f0fc90448a83c2ce0ae33687, type: 2}
   m_TargetDisplay: 0
@@ -794,7 +794,7 @@ Transform:
   m_GameObject: {fileID: 5614300502625618321}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: -75, z: 0}
+  m_LocalPosition: {x: 0.1, y: -0.1, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -989,7 +989,7 @@ GameObject:
   - component: {fileID: 4105208161408818304}
   - component: {fileID: 4168341561843784995}
   - component: {fileID: 3260542387883898301}
-  m_Layer: 0
+  m_Layer: 9
   m_Name: FormantMonitorUpdater
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -1006,7 +1006,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_LocalScale: {x: 0.001, y: 0.001, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 451196119407008052}
