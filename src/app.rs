@@ -10,7 +10,6 @@ use egui_plot::{Bar, BarChart, Line, Plot, PlotPoints};
 pub struct App {
     device_list: DeviceList,
     analyzer: Option<Analyzer>,
-    show_graph: bool,
 }
 
 impl Default for App {
@@ -18,7 +17,6 @@ impl Default for App {
         Self {
             device_list: DeviceList::new(),
             analyzer: None,
-            show_graph: false,
         }
     }
 }
@@ -79,18 +77,20 @@ impl eframe::App for App {
                         self.stop();
                     }
                 });
-                ui.add_enabled_ui(self.is_running(), |ui| {
-                    let label = "グラフを表示 (ちょっと重いよ！)";
-                    ui.checkbox(&mut self.show_graph, label);
-                })
             });
-        if self.show_graph && self.is_running() {
+        let is_focused = ctx.input(|i| i.focused);
+        if is_focused && self.is_running() {
             let analyzer = self.analyzer.as_ref().unwrap();
             update_bottom(analyzer, ctx);
             update_main(analyzer, ctx);
             ctx.request_repaint();
         } else {
-            egui::CentralPanel::default().show(ctx, |_| {});
+            egui::CentralPanel::default().show(ctx, |ui| {
+                if self.is_running() {
+                    ui.heading("実行中...");
+                    ui.label("リソースの節約のためにグラフを非表示にしています。");
+                }
+            });
         }
     }
 }
