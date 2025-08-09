@@ -163,7 +163,7 @@ impl Results {
     }
 
     pub fn volume_db(&self) -> f32 {
-        self.read().rms.log10() * 20.0
+        utils::to_db(self.read().rms)
     }
 
     pub fn freq_history_in_midi_note(&self) -> Vec<f32> {
@@ -199,7 +199,17 @@ impl Results {
     }
 }
 
-fn spawn_analyze_loop(capturer: Capturer, results: Results, stop: mpsc::Receiver<()>) {
+#[derive(Debug, Default, Clone, Copy)]
+pub struct AnalyzerOptions {
+    pub gain: f32,
+}
+
+fn spawn_analyze_loop(
+    capturer: Capturer,
+    results: Results,
+    options: Arc<RwLock<AnalyzerOptions>>,
+    stop: mpsc::Receiver<()>,
+) {
     thread::spawn(move || {
         let mut buffer = VecDeque::from([0.0; BUFFER_SIZE]);
         let osc_sender = OscSender::new();
@@ -208,9 +218,10 @@ fn spawn_analyze_loop(capturer: Capturer, results: Results, stop: mpsc::Receiver
             let sound = capturer.rx.recv().unwrap();
             buffer.drain(..CHUNK_SIZE);
             buffer.extend(sound.samples);
+            let factor = utils::from_db(options.read().unwrap().gain);
             let sound = Sound {
                 samplerate: sound.samplerate,
-                samples: buffer.iter().cloned().collect(),
+                samples: buffer.iter().map(|s| s * factor).collect(),
             };
             let feature = feature_analyzer.analyze(&sound);
             results.write().push(&feature);
@@ -229,16 +240,19 @@ fn spawn_analyze_loop(capturer: Capturer, results: Results, stop: mpsc::Receiver
 pub struct Analyzer {
     stop_sender: mpsc::Sender<()>,
     pub results: Results,
+    pub options: Arc<RwLock<AnalyzerOptions>>,
 }
 
 impl Analyzer {
-    pub fn new(capturer: Capturer) -> Self {
+    pub fn new(capturer: Capturer, options: AnalyzerOptions) -> Self {
         let (stop_sender, stop) = mpsc::channel();
         let results = Results::new();
-        spawn_analyze_loop(capturer, results.clone(), stop);
+        let options = Arc::new(RwLock::new(options));
+        spawn_analyze_loop(capturer, results.clone(), options.clone(), stop);
         Self {
             stop_sender,
             results,
+            options,
         }
     }
 }
