@@ -1,7 +1,7 @@
 use core::f32;
 use std::collections::VecDeque;
 use std::f64::consts::PI;
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{mpsc, Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use std::thread;
 
 use linear_predictive_coding::calc_lpc_by_burg;
@@ -11,7 +11,7 @@ use rustfft::num_complex::Complex;
 use rustfft::num_traits::Inv;
 
 use crate::osc::OscSender;
-use crate::sound_device::{self, Sound};
+use crate::sound_device::{Capturer, Sound};
 
 pub const CHUNK_SIZE: usize = 1024;
 const BUFFER_SIZE: usize = CHUNK_SIZE * 4;
@@ -106,7 +106,7 @@ impl FeatureAnalyzer {
     }
 }
 
-struct AnalyzedFeatures {
+struct ResultStore {
     freq_history: VecDeque<f32>,
     spectrum: Vec<(f32, f32)>,
     gains: Vec<f32>,
@@ -114,7 +114,7 @@ struct AnalyzedFeatures {
     formant_peak: Vec<f64>,
 }
 
-impl AnalyzedFeatures {
+impl ResultStore {
     fn new() -> Self {
         Self {
             freq_history: VecDeque::from([f32::NAN; 201]),
@@ -130,52 +130,31 @@ impl AnalyzedFeatures {
         self.spectrum.copy_from_slice(&f.spectrum);
         self.gains.copy_from_slice(&f.gains);
         self.formant_spec.copy_from_slice(&f.formant_spec);
-        self.formant_peak.resize(f.formant_peak.len(), 0.0);
-        self.formant_peak.copy_from_slice(&f.formant_peak);
+        self.formant_peak.clone_from(&f.formant_peak);
     }
 }
 
-pub struct Analyzer {
-    stop_sender: mpsc::Sender<()>,
-    data: Arc<Mutex<AnalyzedFeatures>>,
-}
+pub struct Results(Arc<RwLock<ResultStore>>);
 
-impl Analyzer {
-    pub fn new(capturer: sound_device::Capturer) -> Self {
-        let (stop_sender, stop) = mpsc::channel();
-        let data = Arc::new(Mutex::new(AnalyzedFeatures::new()));
-        let data_clone = data.clone();
-        thread::spawn(move || {
-            let mut buffer = VecDeque::from([0.0; BUFFER_SIZE]);
-            let osc_sender = OscSender::new();
-            let mut feature_analyzer = FeatureAnalyzer::new();
-            while stop.try_recv().is_err() {
-                let sound = capturer.rx.recv().unwrap();
-                buffer.drain(..CHUNK_SIZE);
-                buffer.extend(sound.samples);
-                let sound = Sound {
-                    samplerate: sound.samplerate,
-                    samples: buffer.iter().cloned().collect(),
-                };
-                let feature = feature_analyzer.analyze(&sound);
-                data_clone.lock().unwrap().push(&feature);
-                let freq_normalized = feature.freq.map_or(-1.0, normalize_freq);
-                let formants = feature
-                    .formant_peak
-                    .iter()
-                    .take(4)
-                    .map(|&f| f.clamp(0.0, 8192.0) as f32 / 0x3FFF as f32)
-                    .collect();
-                osc_sender.send_param(freq_normalized, feature.gains, formants);
-            }
-        });
-        Self { stop_sender, data }
+impl Results {
+    fn new() -> Self {
+        Self(Arc::new(RwLock::new(ResultStore::new())))
+    }
+
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+
+    fn read(&self) -> RwLockReadGuard<'_, ResultStore> {
+        self.0.read().unwrap()
+    }
+
+    fn write(&self) -> RwLockWriteGuard<'_, ResultStore> {
+        self.0.write().unwrap()
     }
 
     pub fn freq_history_in_midi_note(&self) -> Vec<f32> {
-        self.data
-            .lock()
-            .unwrap()
+        self.read()
             .freq_history
             .iter()
             .map(freq_to_midi_note)
@@ -183,9 +162,7 @@ impl Analyzer {
     }
 
     pub fn spectrum(&self) -> Vec<(f32, f32)> {
-        self.data
-            .lock()
-            .unwrap()
+        self.read()
             .spectrum
             .iter()
             .map(|(freq, power)| {
@@ -197,15 +174,59 @@ impl Analyzer {
     }
 
     pub fn gains(&self) -> Vec<f32> {
-        self.data.lock().unwrap().gains.clone()
+        self.read().gains.clone()
     }
 
     pub fn formant_spec(&self) -> Vec<f64> {
-        self.data.lock().unwrap().formant_spec.clone()
+        self.read().formant_spec.clone()
     }
 
     pub fn formant_peak(&self) -> Vec<f64> {
-        self.data.lock().unwrap().formant_peak.clone()
+        self.read().formant_peak.clone()
+    }
+}
+
+fn spawn_analyze_loop(capturer: Capturer, results: Results, stop: mpsc::Receiver<()>) {
+    thread::spawn(move || {
+        let mut buffer = VecDeque::from([0.0; BUFFER_SIZE]);
+        let osc_sender = OscSender::new();
+        let mut feature_analyzer = FeatureAnalyzer::new();
+        while stop.try_recv().is_err() {
+            let sound = capturer.rx.recv().unwrap();
+            buffer.drain(..CHUNK_SIZE);
+            buffer.extend(sound.samples);
+            let sound = Sound {
+                samplerate: sound.samplerate,
+                samples: buffer.iter().cloned().collect(),
+            };
+            let feature = feature_analyzer.analyze(&sound);
+            results.write().push(&feature);
+            let freq_normalized = feature.freq.map_or(-1.0, normalize_freq);
+            let formants = feature
+                .formant_peak
+                .iter()
+                .take(4)
+                .map(|&f| f.clamp(0.0, 8192.0) as f32 / 0x3FFF as f32)
+                .collect();
+            osc_sender.send_param(freq_normalized, feature.gains, formants);
+        }
+    });
+}
+
+pub struct Analyzer {
+    stop_sender: mpsc::Sender<()>,
+    pub results: Results,
+}
+
+impl Analyzer {
+    pub fn new(capturer: Capturer) -> Self {
+        let (stop_sender, stop) = mpsc::channel();
+        let results = Results::new();
+        spawn_analyze_loop(capturer, results.clone(), stop);
+        Self {
+            stop_sender,
+            results,
+        }
     }
 }
 

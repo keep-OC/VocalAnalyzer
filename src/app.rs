@@ -96,7 +96,7 @@ impl eframe::App for App {
 }
 
 fn update_main(analyzer: &Analyzer, ctx: &egui::Context) {
-    let freq_history = analyzer.freq_history_in_midi_note();
+    let freq_history = analyzer.results.freq_history_in_midi_note();
     let history_len = freq_history.len() as f64;
     let pitch_points: PlotPoints = freq_history
         .into_iter()
@@ -107,7 +107,7 @@ fn update_main(analyzer: &Analyzer, ctx: &egui::Context) {
         .color(egui::Color32::YELLOW)
         .width(3.0);
 
-    let spectrum = analyzer.spectrum();
+    let spectrum = analyzer.results.spectrum();
     let spec_points: PlotPoints = spectrum
         .into_iter()
         .map(|(midinote, gain)| {
@@ -131,7 +131,7 @@ fn update_main(analyzer: &Analyzer, ctx: &egui::Context) {
 }
 
 fn update_bottom(analyzer: &Analyzer, ctx: &egui::Context) {
-    let gains = analyzer.gains();
+    let gains = analyzer.results.gains();
     let gains_bars: Vec<Bar> = gains
         .into_iter()
         .enumerate()
@@ -151,7 +151,7 @@ fn update_bottom(analyzer: &Analyzer, ctx: &egui::Context) {
         });
 
     let (min, max) = (-30.0, 20.0);
-    let formant_spec = analyzer.formant_spec();
+    let formant_spec = analyzer.results.formant_spec();
     let formant_points: PlotPoints = formant_spec
         .into_iter()
         .enumerate()
@@ -159,7 +159,7 @@ fn update_bottom(analyzer: &Analyzer, ctx: &egui::Context) {
         .collect();
     let formantspec_line = Line::new("formant", formant_points);
 
-    let spectrum = analyzer.spectrum();
+    let spectrum = analyzer.results.spectrum();
     let spec_points: PlotPoints = spectrum
         .into_iter()
         .map(|(midinote, gain)| {
@@ -170,7 +170,7 @@ fn update_bottom(analyzer: &Analyzer, ctx: &egui::Context) {
         .collect();
     let spec = Line::new("pitch", spec_points).color(egui::Color32::CYAN);
 
-    let peaks = analyzer.formant_peak();
+    let peaks = analyzer.results.formant_peak();
     let colors = [
         egui::Color32::RED,
         egui::Color32::GREEN,
