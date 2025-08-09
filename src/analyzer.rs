@@ -17,13 +17,14 @@ use crate::utils;
 pub const CHUNK_SIZE: usize = 1024;
 const BUFFER_SIZE: usize = CHUNK_SIZE * 4;
 const LPC_DEPTH: usize = 20;
+const FORMANT_SPEC_SIZE: usize = 512;
 
 struct Feature {
     rms: f32,
     freq: Option<f32>,
     spectrum: Vec<(f32, f32)>,
     gains: Vec<f32>,
-    formant_spec: Vec<f64>,
+    formant_spec: Vec<(f64, f64)>,
     formant_peak: Vec<f64>,
 }
 
@@ -85,10 +86,11 @@ impl FeatureAnalyzer {
             .collect()
     }
 
-    fn analyze_formant(&self, s: &Sound) -> (Vec<f64>, Vec<f64>) {
+    fn analyze_formant(&self, s: &Sound) -> (Vec<(f64, f64)>, Vec<f64>) {
         const CHUNK: usize = 2;
         const RESAMPLED_BUFFER_SIZE: usize = BUFFER_SIZE / CHUNK;
         let nyquist = s.samplerate / 2;
+        let resampled_rate = s.samplerate / CHUNK;
         let resampled_nyquist = nyquist as f64 / CHUNK as f64;
         let mut buffer: Vec<f32> = s
             .samples
@@ -99,7 +101,7 @@ impl FeatureAnalyzer {
         process_window(&mut buffer, apodize::hanning_iter(RESAMPLED_BUFFER_SIZE));
         let array = ndarray::Array::from_iter(buffer.iter().map(|&x| x as f64));
         let filter_coeffs = calc_lpc_by_burg(array.view(), LPC_DEPTH).unwrap().to_vec();
-        let spec = calc_freq_responce(&filter_coeffs, 512);
+        let spec = calc_freq_responce(&filter_coeffs, FORMANT_SPEC_SIZE, resampled_rate);
         let roots: Vec<Complex<f64>> = calc_poly_roots(&filter_coeffs);
         let mut freqs: Vec<f64> = roots
             .into_iter()
@@ -116,7 +118,7 @@ struct ResultStore {
     freq_history: VecDeque<f32>,
     spectrum: Vec<(f32, f32)>,
     gains: Vec<f32>,
-    formant_spec: Vec<f64>,
+    formant_spec: Vec<(f64, f64)>,
     formant_peak: Vec<f64>,
 }
 
@@ -127,7 +129,7 @@ impl ResultStore {
             freq_history: VecDeque::from([f32::NAN; 201]),
             spectrum: vec![(0.0, 0.0); BUFFER_SIZE / 2],
             gains: vec![0.0; 20],
-            formant_spec: vec![0.0; 512],
+            formant_spec: vec![(0.0, 0.0); FORMANT_SPEC_SIZE],
             formant_peak: vec![],
         }
     }
@@ -175,6 +177,10 @@ impl Results {
     }
 
     pub fn spectrum(&self) -> Vec<(f32, f32)> {
+        self.read().spectrum.clone()
+    }
+
+    pub fn spectrum_in_midi_note(&self) -> Vec<(f32, f32)> {
         self.read()
             .spectrum
             .iter()
@@ -190,7 +196,7 @@ impl Results {
         self.read().gains.clone()
     }
 
-    pub fn formant_spec(&self) -> Vec<f64> {
+    pub fn formant_spec(&self) -> Vec<(f64, f64)> {
         self.read().formant_spec.clone()
     }
 
@@ -301,7 +307,7 @@ fn calc_rms(s: &Sound) -> f32 {
     mean_square.sqrt()
 }
 
-fn calc_freq_responce(coeffs: &[f64], size: usize) -> Vec<f64> {
+fn calc_freq_responce(coeffs: &[f64], size: usize, samplerate: usize) -> Vec<(f64, f64)> {
     let one = Complex::new(1.0, 0.0);
     let a = |z: Complex<f64>| {
         one + coeffs
@@ -313,8 +319,9 @@ fn calc_freq_responce(coeffs: &[f64], size: usize) -> Vec<f64> {
     (0..size)
         .map(|i| {
             let omega = i as f64 * std::f64::consts::PI / size as f64;
+            let freq = samplerate as f64 / (2 * size) as f64 * i as f64;
             let z = Complex::from_polar(1.0, omega);
-            a(z).norm().inv().ln()
+            (freq, a(z).norm().inv())
         })
         .collect()
 }
