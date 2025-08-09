@@ -12,12 +12,14 @@ use rustfft::num_traits::Inv;
 
 use crate::osc::OscSender;
 use crate::sound_device::{Capturer, Sound};
+use crate::utils;
 
 pub const CHUNK_SIZE: usize = 1024;
 const BUFFER_SIZE: usize = CHUNK_SIZE * 4;
 const LPC_DEPTH: usize = 20;
 
 struct Feature {
+    rms: f32,
     freq: Option<f32>,
     spectrum: Vec<(f32, f32)>,
     gains: Vec<f32>,
@@ -29,6 +31,7 @@ struct FeatureAnalyzer {
     detector: detector::mcleod::McLeodDetector<f32>,
     fft: Arc<dyn rustfft::Fft<f32>>,
 }
+
 impl FeatureAnalyzer {
     fn new() -> Self {
         let detector = detector::mcleod::McLeodDetector::new(BUFFER_SIZE, BUFFER_SIZE / 2);
@@ -36,9 +39,10 @@ impl FeatureAnalyzer {
         let fft = planner.plan_fft_forward(BUFFER_SIZE);
         Self { detector, fft }
     }
-    fn analyze(&mut self, samples: &Sound) -> Feature {
-        let freq = self.analyze_freq(samples);
-        let spectrum = self.analyze_spectrum(samples);
+    fn analyze(&mut self, sound: &Sound) -> Feature {
+        let rms = calc_rms(sound);
+        let freq = self.analyze_freq(sound);
+        let spectrum = self.analyze_spectrum(sound);
         let gains: Vec<f32> = (1..=20)
             .map(|k| {
                 freq.map_or(0.0, |f0| {
@@ -47,9 +51,10 @@ impl FeatureAnalyzer {
                 })
             })
             .collect();
-        let (formant_spec, formant_peak) = self.analyze_formant(samples);
+        let (formant_spec, formant_peak) = self.analyze_formant(sound);
 
         Feature {
+            rms,
             freq,
             spectrum,
             gains,
@@ -107,6 +112,7 @@ impl FeatureAnalyzer {
 }
 
 struct ResultStore {
+    rms: f32,
     freq_history: VecDeque<f32>,
     spectrum: Vec<(f32, f32)>,
     gains: Vec<f32>,
@@ -117,6 +123,7 @@ struct ResultStore {
 impl ResultStore {
     fn new() -> Self {
         Self {
+            rms: 0.0,
             freq_history: VecDeque::from([f32::NAN; 201]),
             spectrum: vec![(0.0, 0.0); BUFFER_SIZE / 2],
             gains: vec![0.0; 20],
@@ -124,7 +131,9 @@ impl ResultStore {
             formant_peak: vec![],
         }
     }
+
     fn push(&mut self, f: &Feature) {
+        self.rms = f.rms;
         self.freq_history.pop_front();
         self.freq_history.push_back(f.freq.unwrap_or(f32::NAN));
         self.spectrum.copy_from_slice(&f.spectrum);
@@ -151,6 +160,10 @@ impl Results {
 
     fn write(&self) -> RwLockWriteGuard<'_, ResultStore> {
         self.0.write().unwrap()
+    }
+
+    pub fn volume_db(&self) -> f32 {
+        self.read().rms.log10() * 20.0
     }
 
     pub fn freq_history_in_midi_note(&self) -> Vec<f32> {
@@ -247,8 +260,7 @@ fn normalize_freq(freq: f32) -> f32 {
     const E2: f32 = 40.0;
     const G5: f32 = 79.0;
     let midinote = freq_to_midi_note(&freq);
-    let normalize = |v, min, max| (v - min) / (max - min);
-    normalize(midinote, E2, G5).clamp(0.0, 1.0)
+    utils::normalize(midinote, E2, G5).clamp(0.0, 1.0)
 }
 
 fn gain_at_freq(spec: &[(f32, f32)], freq: &f32) -> f32 {
@@ -265,9 +277,14 @@ fn gain_at_freq(spec: &[(f32, f32)], freq: &f32) -> f32 {
     };
     let freq_step = upper_freq - lower_freq;
     let coeff = (freq % freq_step) / freq_step;
-    let lerp = |a, b, t| a + (b - a) * t;
-    let power = lerp(lower_gain, upper_gain, coeff);
+    let power = utils::lerp(lower_gain, upper_gain, coeff);
     power.ln() * 0.2
+}
+
+fn calc_rms(s: &Sound) -> f32 {
+    let len = s.samples.len() as f32;
+    let mean_square = s.samples.iter().map(|f| f * f / len).sum::<f32>();
+    mean_square.sqrt()
 }
 
 fn calc_freq_responce(coeffs: &[f64], size: usize) -> Vec<f64> {

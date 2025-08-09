@@ -3,6 +3,7 @@ use std::io::Read;
 use crate::{
     analyzer::{Analyzer, CHUNK_SIZE},
     sound_device::DeviceList,
+    utils,
 };
 use eframe::egui;
 use egui_plot::{Bar, BarChart, Line, Plot, PlotPoints};
@@ -126,7 +127,14 @@ fn update_main(analyzer: &Analyzer, ctx: &egui::Context) {
         .collect();
     let spec = Line::new("pitch", spec_points).color(egui::Color32::CYAN);
 
+    let gain = utils::normalize(analyzer.results.volume_db(), -40.0, 0.0).clamp(0.0, 1.0);
+    let progress_bar: egui::ProgressBar = egui::ProgressBar::new(gain)
+        .desired_height(10.0)
+        .corner_radius(1);
+
     egui::CentralPanel::default().show(ctx, |ui| {
+        ui.add(progress_bar);
+        ui.add_space(10.0);
         Plot::new("plot")
             .show_x(false)
             .y_axis_formatter(|g, _r| midi_note_number_to_str(g.value))
