@@ -119,7 +119,7 @@ fn update_main(analyzer: &Analyzer, gain: &mut f32, ctx: &egui::Context) {
         .color(egui::Color32::YELLOW)
         .width(3.0);
 
-    let spectrum = analyzer.results.spectrum();
+    let spectrum = analyzer.results.spectrum_in_midi_note();
     let spec_points: PlotPoints = spectrum
         .into_iter()
         .map(|(midinote, gain)| {
@@ -176,23 +176,18 @@ fn update_bottom(analyzer: &Analyzer, ctx: &egui::Context) {
                 });
         });
 
-    let (min, max) = (-30.0, 20.0);
+    let (min, max) = (-80.0, 60.0);
     let formant_spec = analyzer.results.formant_spec();
     let formant_points: PlotPoints = formant_spec
         .into_iter()
-        .enumerate()
-        .map(|(x, y)| [48_000.0 / 4.0 / 512.0 * x as f64, y.clamp(min, max)])
+        .map(|(freq, gain)| [freq, utils::to_db(gain).clamp(min, max)])
         .collect();
     let formantspec_line = Line::new("formant", formant_points);
 
     let spectrum = analyzer.results.spectrum();
     let spec_points: PlotPoints = spectrum
         .into_iter()
-        .map(|(midinote, gain)| {
-            let freq = 440.0 * 2.0_f32.powf((midinote - 69.0) / 12.0) as f64;
-            let gain = (gain as f64 + 6.02).clamp(min, max);
-            [freq, gain]
-        })
+        .map(|(freq, gain)| [freq as f64, utils::to_db(gain as f64).clamp(min, max)])
         .collect();
     let spec = Line::new("pitch", spec_points).color(egui::Color32::CYAN);
 
