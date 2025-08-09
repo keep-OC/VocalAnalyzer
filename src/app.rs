@@ -1,7 +1,7 @@
 use std::io::Read;
 
 use crate::{
-    analyzer::{Analyzer, CHUNK_SIZE},
+    analyzer::{Analyzer, AnalyzerOption, CHUNK_SIZE},
     sound_device::DeviceList,
     utils,
 };
@@ -11,6 +11,7 @@ use egui_plot::{Bar, BarChart, Line, Plot, PlotPoints};
 pub struct App {
     device_list: DeviceList,
     analyzer: Option<Analyzer>,
+    option: AnalyzerOption,
 }
 
 impl Default for App {
@@ -18,6 +19,7 @@ impl Default for App {
         Self {
             device_list: DeviceList::new(),
             analyzer: None,
+            option: Default::default(),
         }
     }
 }
@@ -83,7 +85,7 @@ impl eframe::App for App {
         if is_focused && self.is_running() {
             let analyzer = self.analyzer.as_ref().unwrap();
             update_bottom(analyzer, ctx);
-            update_main(analyzer, ctx);
+            update_main(analyzer, &mut self.option.gain, ctx);
             ctx.request_repaint();
         } else {
             egui::CentralPanel::default().show(ctx, |ui| {
@@ -96,7 +98,7 @@ impl eframe::App for App {
     }
 }
 
-fn update_main(analyzer: &Analyzer, ctx: &egui::Context) {
+fn update_main(analyzer: &Analyzer, gain: &mut f32, ctx: &egui::Context) {
     let freq_history = analyzer.results.freq_history_in_midi_note();
     let history_len = freq_history.len() as f64;
     let pitch_points: PlotPoints = freq_history
@@ -118,12 +120,19 @@ fn update_main(analyzer: &Analyzer, ctx: &egui::Context) {
         .collect();
     let spec = Line::new("pitch", spec_points).color(egui::Color32::CYAN);
 
-    let gain = utils::normalize(analyzer.results.volume_db(), -40.0, 0.0).clamp(0.0, 1.0);
-    let progress_bar: egui::ProgressBar = egui::ProgressBar::new(gain)
+    let volume_normalized =
+        utils::normalize(analyzer.results.volume_db(), -40.0, 0.0).clamp(0.0, 1.0);
+    let progress_bar: egui::ProgressBar = egui::ProgressBar::new(volume_normalized)
         .desired_height(10.0)
         .corner_radius(1);
 
     egui::CentralPanel::default().show(ctx, |ui| {
+        ui.style_mut().spacing.slider_width = 280.0;
+        let slider = egui::Slider::new(gain, -24.0..=24.0).suffix("dB");
+        let resp = ui.add(slider);
+        if resp.changed() {
+            analyzer.options.write().unwrap().gain = *gain;
+        }
         ui.add(progress_bar);
         ui.add_space(10.0);
         Plot::new("plot")
