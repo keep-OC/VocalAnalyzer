@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 apodize = "1.0.0"
 eframe = "0.32.0"
+egui_extras = { version = "0.32.0", features = ["svg"] }
 egui_plot = "0.33.0"
 linear-predictive-coding = "0.4.0"
 ndarray = "0.16.1"

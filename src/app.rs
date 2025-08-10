@@ -10,6 +10,7 @@ use egui_plot::{Bar, BarChart, Line, Plot, PlotPoints};
 pub struct App {
     device_list: DeviceList,
     analyzer: Option<Analyzer>,
+    force_show_graph: bool,
 }
 
 impl Default for App {
@@ -17,6 +18,7 @@ impl Default for App {
         Self {
             device_list: DeviceList::new(),
             analyzer: None,
+            force_show_graph: false,
         }
     }
 }
@@ -36,6 +38,7 @@ impl App {
             .insert(0, "Meiryo".to_owned());
         cc.egui_ctx.set_fonts(fonts);
         cc.egui_ctx.set_theme(egui::Theme::Dark);
+        egui_extras::install_image_loaders(&cc.egui_ctx);
         Default::default()
     }
 
@@ -76,10 +79,14 @@ impl eframe::App for App {
                     if ui.button("Stop").clicked() {
                         self.stop();
                     }
+                    ui.add_space(35.0);
+                    let icon = egui::include_image!("icons/keep.svg");
+                    ui.toggle_value(&mut self.force_show_graph, icon)
+                        .on_hover_text("常にグラフを表示する");
                 });
             });
         let is_focused = ctx.input(|i| i.focused);
-        if is_focused && self.is_running() {
+        if (self.force_show_graph || is_focused) && self.is_running() {
             let analyzer = self.analyzer.as_ref().unwrap();
             update_bottom(analyzer, ctx);
             update_main(analyzer, ctx);
