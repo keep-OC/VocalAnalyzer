@@ -10,7 +10,7 @@ use egui_plot::{Bar, BarChart, Line, Plot, PlotPoints};
 pub struct App {
     device_list: DeviceList,
     analyzer: Option<Analyzer>,
-    show_graph: bool,
+    force_show_graph: bool,
 }
 
 impl Default for App {
@@ -18,7 +18,7 @@ impl Default for App {
         Self {
             device_list: DeviceList::new(),
             analyzer: None,
-            show_graph: false,
+            force_show_graph: false,
         }
     }
 }
@@ -38,6 +38,7 @@ impl App {
             .insert(0, "Meiryo".to_owned());
         cc.egui_ctx.set_fonts(fonts);
         cc.egui_ctx.set_theme(egui::Theme::Dark);
+        egui_extras::install_image_loaders(&cc.egui_ctx);
         Default::default()
     }
 
@@ -78,19 +79,27 @@ impl eframe::App for App {
                     if ui.button("Stop").clicked() {
                         self.stop();
                     }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let icon = egui::Image::new(egui::include_image!("icons/keep.svg"))
+                            .fit_to_exact_size(egui::vec2(18.0, 18.0));
+                        ui.toggle_value(&mut self.force_show_graph, icon)
+                            .on_hover_text("常にグラフを表示する");
+                    });
                 });
-                ui.add_enabled_ui(self.is_running(), |ui| {
-                    let label = "グラフを表示 (ちょっと重いよ！)";
-                    ui.checkbox(&mut self.show_graph, label);
-                })
             });
-        if self.show_graph && self.is_running() {
+        let is_focused = ctx.input(|i| i.focused);
+        if (self.force_show_graph || is_focused) && self.is_running() {
             let analyzer = self.analyzer.as_ref().unwrap();
             update_bottom(analyzer, ctx);
             update_main(analyzer, ctx);
             ctx.request_repaint();
         } else {
-            egui::CentralPanel::default().show(ctx, |_| {});
+            egui::CentralPanel::default().show(ctx, |ui| {
+                if self.is_running() {
+                    ui.heading("実行中...");
+                    ui.label("リソースの節約のためにグラフを非表示にしています。");
+                }
+            });
         }
     }
 }
