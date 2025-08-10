@@ -10,14 +10,51 @@ VRChat 上でグローバルに動作する音声解析ツール（アバター�
   - デフォルトでは 10 倍音まで表示します
   - カスタムで 20 倍音まで表示を拡張可能です（詳細は後述します）
   - デフォルトで expression parameter を 83 bits 消費します（20 倍音まで表示する場合は 163 bits 消費します）
+
+<p align="center">
+  <img src="images/Spectrogram.png" width="300">
+</p>
+
 - ピッチモニター (PitchMonitor)
   - 基音のピッチを表示します
   - E2 から G5 を表示します
   - expression parameter を 27 bits 消費します
+
+<p align="center">
+  <img src="images/PitchMonitor.png" width="300">
+</p>
+
 - フォルマントモニター (FormantMonitor)
   - 第一フォルマントから第四フォルマントを表示します
   - 0 Hz から 8192 Hz を表示します
   - expression parameter を 67 bits 消費します
+
+<p align="center">
+  <img src="images/FormantMonitor.png" width="300">
+</p>
+
+- OSC アプリ (voice_analyzer.exe) made by @naca-nyan
+  - 機能・仕様
+    - 音声入力・音声解析・OSC 送信を行います
+    - start を押してからは stop が押されるまで音声入力・音声解析・OSC 送信が行われ続けます
+    - 上部のスライダーで入力ボリュームを調整できます
+    - グラフは上からピッチ表示・スペクトル表示・整数次倍音のゲイン表示です
+    - ピッチ表示の右側にもスペクトルを表示しています
+    - スペクトル表示に重ねて描画される、左から赤・緑・青・ピンクの縦線は、順に第一フォルマント周波数・第二フォルマント周波数・第三フォルマント周波数・第四フォルマント周波数を表しています
+    - voice_analyzer.exe がフォーカスから外れた際、パフォーマンス向上のためグラフの表示を省略します
+      - 右上のピンマークでグラフの常時表示に切り替え可能です
+      - OSC アプリのウィンドウを小さくしすぎるとピンマークの表示がおかしくなる可能性があります
+  - ユーザーができること
+    - 入力デバイス選択
+    - start / stop の切り替え
+    - 入力ボリューム調整
+    - グラフを常時表示するかの切り替え（右上のピンマーク）
+    - 各グラフの表示領域の拡大・縮小
+    - 各グラフの縦軸・横軸の拡大・縮小
+
+<p align="center">
+  <img src="images/voice_analyzer.png" alt="説明文" width="500">
+</p>
 
 ## 開発環境
 
