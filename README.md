@@ -33,7 +33,7 @@ VRChat 上でグローバルに動作する音声解析ツール（アバター�
   <img src="images/FormantMonitor.png" width="300">
 </p>
 
-- OSC アプリ (voice_analyzer.exe) made by @naca-nyan
+- OSC アプリ (voice_analyzer.exe)
   - 機能・仕様
     - 音声入力・音声解析・OSC 送信を行います
     - start を押してからは stop が押されるまで音声入力・音声解析・OSC 送信が行われ続けます
@@ -109,3 +109,7 @@ Expression Menu に配置した prefab に応じた SubMenu が追加されて�
 - スペクトログラムの表示倍音を増やす（減らす）方法
   - Spectrogram の MA parameters にある未登録パラメータのタブから *G~~* (ex. G10, G11) のパラメータを増やしたり減らしたりしてください
   - *G~~* のパラメータを追加した際に名前の右にあるタブが "Animatorのみ" になる場合、"Float" に変更してください
+
+## 謝辞
+
+[@naca-nyan](https://github.com/naca-nyan) が OSC アプリの Rust 実装をしてくれました。ありがとうございます。
