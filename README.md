@@ -84,7 +84,8 @@ Modular Avatar に対応しているため、上記操作ののちアップロ�
 ### VRChat 上での操作方法
 
 Expression Menu に配置した prefab に応じた SubMenu が追加されているはずです。  
-使いたい機能の **Enable + Scroll ON** を ON にしていただくと表示用 Quad の更新が行われます。
+まずは Expression Menu の Options → OSC → Enabled から OSC を有効にしてください。  
+あとは使いたい機能の **Enable + Scroll ON** を ON にしていただくと表示用 Quad の更新が行われます。
 
 - Expression Menu に配置した prefab に応じた SubMenu が追加されます
 - 各 SubMenu には下記の toggle が登録されています
