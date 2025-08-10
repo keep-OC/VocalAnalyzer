@@ -79,10 +79,12 @@ impl eframe::App for App {
                     if ui.button("Stop").clicked() {
                         self.stop();
                     }
-                    ui.add_space(35.0);
-                    let icon = egui::include_image!("icons/keep.svg");
-                    ui.toggle_value(&mut self.force_show_graph, icon)
-                        .on_hover_text("常にグラフを表示する");
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let icon = egui::Image::new(egui::include_image!("icons/keep.svg"))
+                            .fit_to_exact_size(egui::vec2(18.0, 18.0));
+                        ui.toggle_value(&mut self.force_show_graph, icon)
+                            .on_hover_text("常にグラフを表示する");
+                    });
                 });
             });
         let is_focused = ctx.input(|i| i.focused);
