@@ -1,4 +1,5 @@
 use std::io::Read;
+use utils::Elipsis;
 
 use crate::{
     analyzer::{Analyzer, AnalyzerOptions, CHUNK_SIZE},
@@ -68,8 +69,9 @@ impl eframe::App for App {
                 ui.add_space(10.0);
                 ui.horizontal(|ui| {
                     ui.add_enabled_ui(!self.is_running(), |ui| {
-                        let combobox = egui::ComboBox::from_label("")
-                            .selected_text(&self.device_list.device().name);
+                        let mut selected_text = self.device_list.device().name.clone();
+                        selected_text.elipsis(27);
+                        let combobox = egui::ComboBox::from_label("").selected_text(selected_text);
                         combobox.show_ui(ui, |ui| {
                             for (i, device) in self.device_list.devices.iter().enumerate() {
                                 ui.selectable_value(&mut self.device_list.index, i, &device.name);
@@ -82,9 +84,11 @@ impl eframe::App for App {
                     if ui.button("Stop").clicked() {
                         self.stop();
                     }
+                    const ICON_SIZE: f32 = 18.0;
+                    ui.add_space(ICON_SIZE + 8.0);
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         let icon = egui::Image::new(egui::include_image!("icons/keep.svg"))
-                            .fit_to_exact_size(egui::vec2(18.0, 18.0));
+                            .fit_to_exact_size(egui::vec2(ICON_SIZE, ICON_SIZE));
                         ui.toggle_value(&mut self.force_show_graph, icon)
                             .on_hover_text("常にグラフを表示する");
                     });
